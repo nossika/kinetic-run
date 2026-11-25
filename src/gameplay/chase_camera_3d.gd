@@ -1,9 +1,9 @@
 class_name ChaseCamera3D
 extends Camera3D
 
-const FOLLOW_OFFSET := Vector3(0.0, 4.4, 7.6)
-const BASE_PITCH_DEG: float = -21.0
-const ROLL_FACTOR: float = -0.55
+const FOLLOW_OFFSET := Vector3(0.0, 5.2, 8.2)
+const BASE_PITCH_DEG: float = -27.0
+const ROLL_FACTOR: float = 0.0
 const BASE_FOV: float = 65.0
 const MAX_FOV: float = 88.0
 
@@ -28,7 +28,7 @@ func add_shake(amount: float) -> void:
 	_shake_trauma = clampf(_shake_trauma + amount, 0.0, 1.0)
 
 
-func update_camera(ball_pos: Vector3, tilt_deg: float, speed_mps: float, delta: float) -> void:
+func update_camera(ball_pos: Vector3, _tilt_deg: float, speed_mps: float, delta: float) -> void:
 	var speed_ratio := clampf(speed_mps / 55.0, 0.0, 1.0)
 	var dynamic_offset := FOLLOW_OFFSET + Vector3(0.0, 0.7 * speed_ratio, 1.4 * speed_ratio)
 	var target_pos := ball_pos + dynamic_offset
@@ -38,10 +38,7 @@ func update_camera(ball_pos: Vector3, tilt_deg: float, speed_mps: float, delta: 
 	position.y = lerpf(position.y, target_pos.y, pos_lerp)
 	position.z = target_pos.z
 
-	var target_roll := tilt_deg * ROLL_FACTOR
-	rotation_degrees.x = BASE_PITCH_DEG
-	rotation_degrees.y = 0.0
-	rotation_degrees.z = lerpf(rotation_degrees.z, target_roll, clampf(9.0 * delta, 0.0, 1.0))
+	rotation_degrees = Vector3(BASE_PITCH_DEG, 0.0, 0.0)
 
 	var target_fov := lerpf(BASE_FOV, MAX_FOV, speed_ratio)
 	fov = lerpf(fov, target_fov, clampf(7.0 * delta, 0.0, 1.0))
