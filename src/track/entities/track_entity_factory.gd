@@ -2,10 +2,15 @@ class_name TrackEntityFactory
 extends RefCounted
 
 
-static func create_crate(pos: Vector3) -> CrateObstacle:
+static func create_crate(pos: Vector3, tier: String = "light") -> CrateObstacle:
 	var n := CrateObstacle.new()
+	n.configure_tier(tier)
 	n.position = pos
 	return n
+
+
+static func create_heavy_crate(pos: Vector3) -> CrateObstacle:
+	return create_crate(pos, "medium")
 
 
 static func create_slime_zone(pos: Vector3, size: Vector2 = Vector2(4.0, 6.0)) -> SlimeZone:
@@ -42,5 +47,28 @@ static func create_pinball_bumper(pos: Vector3) -> PinballBumper:
 
 static func create_explosive_barrel(pos: Vector3) -> ExplosiveBarrel:
 	var n := ExplosiveBarrel.new()
+	n.position = pos
+	return n
+
+
+static func create_spring_pad(pos: Vector3) -> SpringPad:
+	var n := SpringPad.new()
+	n.position = pos
+	return n
+
+
+static func create_aerial_bonus_ring(pos: Vector3) -> AerialBonusRing:
+	var n := AerialBonusRing.new()
+	n.position = pos
+	return n
+
+
+static func create_aerial_blocker(
+	pos: Vector3,
+	blocker_type: String = "soft_balloon",
+	initial_phase: float = 0.0
+) -> AerialBlocker:
+	var n := AerialBlocker.new()
+	n.configure_type(blocker_type, initial_phase)
 	n.position = pos
 	return n

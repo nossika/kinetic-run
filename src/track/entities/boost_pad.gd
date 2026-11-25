@@ -15,14 +15,33 @@ func _ready() -> void:
 	var pad_mesh := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(2.3, 0.10, 3.5)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.08, 0.92, 1.0)
-	mat.emission_enabled = true
-	mat.emission = Color(0.05, 0.85, 1.0)
-	mat.emission_energy_multiplier = 1.9
-	bm.material = mat
+	bm.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.12, 0.88, 0.98))
 	RenderHelper.attach_mesh(pad_mesh, bm)
 	add_child(pad_mesh)
+
+	if DisplayServer.get_name() != "headless":
+		var chev_mat := StandardMaterial3D.new()
+		chev_mat.albedo_color = Color(0.80, 1.0, 0.98)
+		chev_mat.emission_enabled = true
+		chev_mat.emission = Color(0.24, 0.96, 0.92)
+		chev_mat.emission_energy_multiplier = 0.95
+
+		var arm_mesh := BoxMesh.new()
+		arm_mesh.size = Vector3(0.76, 0.035, 0.17)
+		arm_mesh.material = chev_mat
+
+		for z_off in [0.95, 0.0, -0.95]:
+			var left_arm := MeshInstance3D.new()
+			RenderHelper.attach_mesh(left_arm, arm_mesh)
+			left_arm.position = Vector3(-0.32, 0.068, z_off)
+			left_arm.rotation_degrees = Vector3(0.0, 32.0, 0.0)
+			add_child(left_arm)
+
+			var right_arm := MeshInstance3D.new()
+			RenderHelper.attach_mesh(right_arm, arm_mesh)
+			right_arm.position = Vector3(0.32, 0.068, z_off)
+			right_arm.rotation_degrees = Vector3(0.0, -32.0, 0.0)
+			add_child(right_arm)
 
 	body_entered.connect(_on_body_entered)
 

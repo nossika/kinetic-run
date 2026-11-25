@@ -14,12 +14,7 @@ func _ready() -> void:
 	var mesh_inst := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(zone_size.x, 0.08, zone_size.y)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.22, 0.88, 0.30, 0.85)
-	mat.emission_enabled = true
-	mat.emission = Color(0.12, 0.65, 0.20)
-	mat.emission_energy_multiplier = 0.7
-	mesh.material = mat
+	mesh.material = MaterialLibrary.make_jelly_outer_material(Color(0.35, 0.88, 0.28))
 	RenderHelper.attach_mesh(mesh_inst, mesh)
 	add_child(mesh_inst)
 
