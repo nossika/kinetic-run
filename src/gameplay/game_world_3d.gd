@@ -5,7 +5,7 @@ var game_state: String = "RACING"
 var run_state: RunState = RunState.new()
 var synergy_bus: PhysicsSynergyBus = PhysicsSynergyBus.new()
 var upgrade_catalog: UpgradeCatalog = UpgradeCatalog.new()
-var tilt_controller: GravityTiltController = GravityTiltController.new()
+var thrust_controller: LateralThrustController = LateralThrustController.new()
 
 var track_generator: TrackGenerator3D = null
 var player_ball: PlayerBall3D = null
@@ -17,8 +17,10 @@ var summary_panel: RunSummaryPanel = null
 var current_draft_choices: Array[UpgradeDefinition] = []
 var override_tilt_input: Variant = null
 
-var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _vfx_rings: Array[Dictionary] = []
+var _paused_ball_vel: Vector3 = Vector3.ZERO
+var _paused_ball_ang_vel: Vector3 = Vector3.ZERO
+var _paused_ball_freeze: bool = false
 
 
 func _ready() -> void:
@@ -29,26 +31,49 @@ func _ready() -> void:
 
 
 func _setup_lighting_and_sky() -> void:
+	var is_headless := DisplayServer.get_name() == "headless"
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.03, 0.05, 0.11)
+	if not is_headless:
+		var sky_mat := ProceduralSkyMaterial.new()
+		sky_mat.sky_top_color = Color(0.58, 0.76, 0.95)
+		sky_mat.sky_horizon_color = Color(0.92, 0.90, 0.85)
+		sky_mat.ground_horizon_color = Color(0.82, 0.78, 0.72)
+		sky_mat.ground_bottom_color = Color(0.62, 0.58, 0.52)
+		var sky := Sky.new()
+		sky.sky_material = sky_mat
+		env.background_mode = Environment.BG_SKY
+		env.sky = sky
+	else:
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0.85, 0.88, 0.92)
+
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.32, 0.42, 0.65)
-	env.ambient_light_energy = 0.85
+	env.ambient_light_color = Color(0.88, 0.87, 0.84)
+	env.ambient_light_energy = 0.72
 	env.glow_enabled = true
-	env.glow_intensity = 0.65
-	env.glow_bloom = 0.15
+	env.glow_intensity = 0.22
+	env.glow_bloom = 0.05
 
 	var world_env := WorldEnvironment.new()
+	world_env.name = "WorldEnvironment"
 	world_env.environment = env
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
+	sun.name = "MainSunLight"
 	sun.rotation_degrees = Vector3(-52.0, -28.0, 0.0)
-	sun.light_color = Color(0.96, 0.97, 1.0)
-	sun.light_energy = 1.25
-	sun.shadow_enabled = DisplayServer.get_name() != "headless"
+	sun.light_color = Color(1.0, 0.97, 0.91)
+	sun.light_energy = 1.15
+	sun.shadow_enabled = not is_headless
 	add_child(sun)
+
+	var fill := DirectionalLight3D.new()
+	fill.name = "SkyFillLight"
+	fill.rotation_degrees = Vector3(-35.0, 145.0, 0.0)
+	fill.light_color = Color(0.80, 0.88, 1.0)
+	fill.light_energy = 0.32
+	fill.shadow_enabled = false
+	add_child(fill)
 
 
 func _setup_world_nodes() -> void:
@@ -56,6 +81,7 @@ func _setup_world_nodes() -> void:
 	track_generator.name = "TrackGenerator3D"
 	track_generator.finish_crossed.connect(on_finish_line_crossed)
 	track_generator.barrel_detonated.connect(_on_barrel_detonated)
+	track_generator.bonus_ring_collected.connect(_on_bonus_ring_collected)
 	add_child(track_generator)
 
 	player_ball = PlayerBall3D.new()
@@ -77,6 +103,8 @@ func _setup_ui_layer() -> void:
 	add_child(canvas)
 
 	hud_overlay = HudOverlay.new()
+	hud_overlay.seed_dialog_toggled.connect(_on_seed_dialog_toggled)
+	hud_overlay.seed_submitted.connect(restart_run_with_seed_text)
 	canvas.add_child(hud_overlay)
 
 	draft_panel = UpgradeDraftPanel.new()
@@ -85,35 +113,62 @@ func _setup_ui_layer() -> void:
 
 	summary_panel = RunSummaryPanel.new()
 	summary_panel.restart_requested.connect(func() -> void: restart_run(0))
+	summary_panel.restart_same_seed_requested.connect(restart_same_seed)
+	summary_panel.restart_custom_seed_requested.connect(restart_run_with_seed_text)
 	canvas.add_child(summary_panel)
 
 
 func restart_run(seed_val: int = 0) -> void:
 	synergy_bus.reset_all()
 	run_state.start_new_run(seed_val)
-	_rng.seed = run_state.run_seed
-	draft_panel.visible = false
-	summary_panel.visible = false
+	if hud_overlay != null:
+		hud_overlay.close_seed_dialog(false)
+	if draft_panel != null:
+		draft_panel.visible = false
+	if summary_panel != null:
+		summary_panel.visible = false
 	_start_level(1)
+
+
+func restart_run_with_seed_text(raw_text: String) -> void:
+	synergy_bus.reset_all()
+	run_state.start_new_run_from_text(raw_text)
+	if hud_overlay != null:
+		hud_overlay.close_seed_dialog(false)
+	if draft_panel != null:
+		draft_panel.visible = false
+	if summary_panel != null:
+		summary_panel.visible = false
+	_start_level(1)
+
+
+func restart_same_seed() -> void:
+	restart_run_with_seed_text(run_state.seed_text)
 
 
 func _start_level(level: int) -> void:
 	run_state.begin_level(level)
 	synergy_bus.reset_level_transient()
-	tilt_controller.reset()
+	thrust_controller.reset()
 
-	var level_seed := run_state.run_seed + level * 7919
+	var level_seed := RunState.derive_track_seed(run_state.run_seed, level)
 	track_generator.generate_track(level, level_seed)
 
+	player_ball.track_reference = track_generator.get_track_root()
 	player_ball.sync_from_stats()
-	var start_pos := Vector3(0.0, player_ball.current_radius + 0.15, -1.5)
+	var start_pos := track_generator.track_local_to_world(Vector3(0.0, player_ball.current_radius + 0.15, -1.5))
 	player_ball.reset_for_track(start_pos)
+	var track_root := track_generator.get_track_root()
+	if track_root != null:
+		player_ball.linear_velocity = -track_root.global_transform.basis.z.normalized() * 4.5
+		player_ball._saved_velocity_pre_step = player_ball.linear_velocity
 	chase_camera.snap_to_target(start_pos)
 
-	var space_rid := get_world_3d().space
-	tilt_controller.apply_to_space(space_rid, tilt_controller.compute_gravity_vector(0.0, 1.0))
+	thrust_controller.apply_vertical_gravity_to_space(get_world_3d().space)
 
 	game_state = "RACING"
+	if hud_overlay != null:
+		hud_overlay.seed_input_enabled = true
 	_refresh_hud()
 
 
@@ -128,12 +183,9 @@ func simulate_race_step(delta: float) -> void:
 		return
 
 	var input_axis := _read_tilt_input()
-	var max_tilt := synergy_bus.stats.get_stat("max_tilt_deg")
 	var lat_mult := synergy_bus.stats.get_stat("tilt_lateral_force_mult")
-	var g_vec := tilt_controller.update_tilt(input_axis, max_tilt, delta, lat_mult)
-	tilt_controller.apply_to_space(get_world_3d().space, g_vec)
-
-	player_ball.step_ball(delta, tilt_controller.current_tilt_deg)
+	var lat_accel := thrust_controller.compute_lateral_accel(input_axis, lat_mult, player_ball.is_airborne())
+	player_ball.step_ball(delta, thrust_controller.current_axis, lat_accel)
 
 	var spd := player_ball.linear_velocity.length()
 	var ek := 0.5 * player_ball.mass * spd * spd
@@ -141,12 +193,13 @@ func simulate_race_step(delta: float) -> void:
 
 	chase_camera.update_camera(
 		player_ball.global_position,
-		tilt_controller.current_tilt_deg,
+		thrust_controller.current_axis,
 		spd,
 		delta
 	)
 
-	if not player_ball.is_respawning and player_ball.global_position.z <= track_generator.finish_z:
+	var local_pos := track_generator.world_to_track_local(player_ball.global_position)
+	if not player_ball.is_respawning and local_pos.z <= track_generator.finish_z:
 		on_finish_line_crossed()
 		return
 
@@ -171,13 +224,15 @@ func _read_tilt_input() -> float:
 	)
 
 	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		var vp_size := get_viewport().get_visible_rect().size
-		if vp_size.x > 1.0:
-			var mouse_x := get_viewport().get_mouse_position().x
-			if mouse_x < vp_size.x * 0.45:
-				left_pressed = true
-			elif mouse_x > vp_size.x * 0.55:
-				right_pressed = true
+		var vp := get_viewport()
+		if vp != null and vp.gui_get_hovered_control() == null:
+			var vp_size := vp.get_visible_rect().size
+			if vp_size.x > 1.0:
+				var mouse_x := vp.get_mouse_position().x
+				if mouse_x < vp_size.x * 0.45:
+					left_pressed = true
+				elif mouse_x > vp_size.x * 0.55:
+					right_pressed = true
 
 	var axis := 0.0
 	if left_pressed:
@@ -187,16 +242,49 @@ func _read_tilt_input() -> float:
 	return axis
 
 
+func _on_seed_dialog_toggled(is_open: bool) -> void:
+	if is_open:
+		if game_state != "RACING":
+			return
+		_paused_ball_vel = player_ball.linear_velocity
+		_paused_ball_ang_vel = player_ball.angular_velocity
+		_paused_ball_freeze = player_ball.freeze
+		thrust_controller.reset()
+		player_ball._update_hud_ring_indicators(0.0)
+		player_ball.freeze = true
+		game_state = "SEED_INPUT"
+		_refresh_hud()
+	else:
+		if game_state != "SEED_INPUT":
+			return
+		game_state = "RACING"
+		player_ball.freeze = _paused_ball_freeze
+		if not _paused_ball_freeze:
+			player_ball.linear_velocity = _paused_ball_vel
+			player_ball.angular_velocity = _paused_ball_ang_vel
+			player_ball._saved_velocity_pre_step = _paused_ball_vel
+		_refresh_hud()
+
+
 func on_finish_line_crossed() -> void:
 	if game_state != "RACING":
 		return
+	if hud_overlay != null:
+		hud_overlay.close_seed_dialog(false)
+		hud_overlay.seed_input_enabled = false
 	game_state = "DRAFTING"
+	thrust_controller.reset()
+	player_ball._update_hud_ring_indicators(0.0)
 	player_ball.freeze = true
+
+	var draft_rng := RandomNumberGenerator.new()
+	draft_rng.seed = RunState.derive_draft_seed(run_state.run_seed, run_state.current_level)
 	current_draft_choices = upgrade_catalog.roll_draft_choices(
-		_rng,
+		draft_rng,
 		3,
 		run_state.owned_upgrade_ids
 	)
+	_refresh_hud()
 	draft_panel.show_choices(run_state.current_level, current_draft_choices)
 
 
@@ -213,9 +301,20 @@ func select_draft_upgrade(choice_index: int) -> void:
 
 
 func _enter_game_over() -> void:
+	if hud_overlay != null:
+		hud_overlay.close_seed_dialog(false)
+		hud_overlay.seed_input_enabled = false
 	game_state = "GAME_OVER"
+	thrust_controller.reset()
+	player_ball._update_hud_ring_indicators(0.0)
 	player_ball.freeze = true
+	_refresh_hud()
 	summary_panel.show_summary(run_state, _format_build_summary())
+
+
+func _on_bonus_ring_collected(seconds: float) -> void:
+	run_state.add_bonus_time(seconds)
+	_refresh_hud()
 
 
 func _on_target_smashed(_world_pos: Vector3) -> void:
@@ -225,6 +324,19 @@ func _on_target_smashed(_world_pos: Vector3) -> void:
 
 func _on_barrel_detonated(origin: Vector3, radius: float, force: float, chain_depth: int) -> void:
 	chase_camera.add_shake(0.38)
+	if player_ball != null and not player_ball.is_respawning:
+		var already_boosted := origin.distance_squared_to(player_ball.last_external_boost_origin) <= 0.0001
+		if already_boosted:
+			player_ball.last_external_boost_origin = Vector3(INF, INF, INF)
+		else:
+			var dist := player_ball.global_position.distance_to(origin)
+			if dist <= radius:
+				var falloff := clampf(1.0 - (dist / (radius * 1.25)), 0.35, 1.0)
+				player_ball.notify_external_boost(
+					ExplosiveBarrel.BALL_BLAST_IMPULSE_PER_KG * player_ball.mass * falloff,
+					origin
+				)
+				player_ball.last_external_boost_origin = Vector3(INF, INF, INF)
 	_execute_shockwave(origin, radius, force, chain_depth)
 
 
@@ -260,10 +372,11 @@ func _spawn_vfx_ring(origin: Vector3, max_radius: float) -> void:
 	cyl.bottom_radius = 1.0
 	cyl.height = 0.12
 	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.albedo_color = Color(1.0, 0.72, 0.25, 0.75)
 	mat.emission_enabled = true
 	mat.emission = Color(1.0, 0.58, 0.15)
-	mat.emission_energy_multiplier = 2.2
+	mat.emission_energy_multiplier = 1.6
 	cyl.material = mat
 	ring.mesh = cyl
 	ring.position = origin + Vector3(0.0, 0.15, 0.0)
@@ -292,7 +405,8 @@ func _update_vfx_rings(delta: float) -> void:
 func _refresh_hud() -> void:
 	if hud_overlay == null:
 		return
-	var progress := clampf(absf(minf(0.0, player_ball.global_position.z)) / maxf(1.0, track_generator.total_length), 0.0, 1.0)
+	var local_pos := track_generator.world_to_track_local(player_ball.global_position)
+	var progress := clampf(absf(minf(0.0, local_pos.z)) / maxf(1.0, track_generator.total_length), 0.0, 1.0)
 	hud_overlay.update_hud(
 		run_state.current_level,
 		run_state.time_remaining,
@@ -302,7 +416,9 @@ func _refresh_hud() -> void:
 		synergy_bus.combo_stacks,
 		synergy_bus.get_effective_impulse_mult(),
 		player_ball.is_respawning,
-		_format_build_summary()
+		_format_build_summary(),
+		run_state.seed_text,
+		thrust_controller.current_axis
 	)
 
 

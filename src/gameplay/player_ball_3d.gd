@@ -26,7 +26,7 @@ var _air_time: float = 0.0
 var _peak_downward_speed: float = 0.0
 var _rail_bounce_cooldown: float = 0.0
 var _saved_velocity_pre_step: Vector3 = Vector3.ZERO
-var _last_thrust_axis: float = 0.0
+var last_external_boost_origin: Vector3 = Vector3(INF, INF, INF)
 
 var _collision_shape: CollisionShape3D = null
 var _sphere_shape: SphereShape3D = null
@@ -285,7 +285,6 @@ func _update_hud_ring_transform() -> void:
 
 
 func _update_hud_ring_indicators(thrust_axis: float) -> void:
-	_last_thrust_axis = thrust_axis
 	_update_hud_ring_transform()
 	if _hud_ring_root == null:
 		return
@@ -349,6 +348,7 @@ func reset_for_track(start_pos: Vector3) -> void:
 	_air_time = 0.0
 	_peak_downward_speed = 0.0
 	_rail_bounce_cooldown = 0.0
+	last_external_boost_origin = Vector3(INF, INF, INF)
 	freeze = false
 	_set_ball_world_pos(start_pos)
 	sync_from_stats()
@@ -429,7 +429,7 @@ func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> 
 	# Hold-to-thrust lateral force & instant-release gentle lateral stop damping
 	if absf(lateral_accel) > 0.0001:
 		apply_central_force(track_basis.x * (lateral_accel * mass))
-	elif absf(thrust_axis) < 0.05 and height_above_floor <= 0.38 and _has_valid_track_reference():
+	elif absf(thrust_axis) < 0.05 and height_above_floor <= 0.38:
 		var lat_v := linear_velocity.dot(track_basis.x)
 		if absf(lat_v) > 0.001:
 			apply_central_force(-track_basis.x * (lat_v * 2.2 * mass))
@@ -523,6 +523,7 @@ func notify_wall_or_bumper_bounce(normal: Vector3, contact_pos: Vector3, bonus_f
 
 
 func notify_external_boost(base_forward_impulse: float, origin_pos: Vector3) -> void:
+	last_external_boost_origin = origin_pos
 	var ext_mult := synergy_bus.stats.get_stat("external_boost_mult") if synergy_bus != null else 1.0
 	apply_forward_impulse(base_forward_impulse * ext_mult)
 	if synergy_bus != null:
