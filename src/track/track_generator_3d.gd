@@ -8,6 +8,8 @@ signal bonus_ring_collected(seconds: float)
 const TRACK_SLOPE_PITCH_DEG: float = -11.0
 const START_APRON_LEN: float = 10.0
 const FINISH_RUNWAY_LEN: float = 10.0
+const MIN_RB_CLEARANCE_XZ: float = 1.90
+const CHUNK_Z_MARGIN: float = 1.45
 
 var active_chunks: Array[TrackChunkBase] = []
 var active_entities: Array[Node3D] = []
@@ -26,7 +28,8 @@ func track_local_to_world(local_pos: Vector3) -> Vector3:
 		if _track_root.is_inside_tree():
 			return _track_root.to_global(local_pos)
 		return (transform * _track_root.transform) * local_pos
-	var fallback_xform := transform * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(TRACK_SLOPE_PITCH_DEG)), Vector3.ZERO)
+	var base_xform := global_transform if is_inside_tree() else transform
+	var fallback_xform := base_xform * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(TRACK_SLOPE_PITCH_DEG)), Vector3.ZERO)
 	return fallback_xform * local_pos
 
 
@@ -35,7 +38,8 @@ func world_to_track_local(world_pos: Vector3) -> Vector3:
 		if _track_root.is_inside_tree():
 			return _track_root.to_local(world_pos)
 		return (transform * _track_root.transform).affine_inverse() * world_pos
-	var fallback_xform := transform * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(TRACK_SLOPE_PITCH_DEG)), Vector3.ZERO)
+	var base_xform := global_transform if is_inside_tree() else transform
+	var fallback_xform := base_xform * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(TRACK_SLOPE_PITCH_DEG)), Vector3.ZERO)
 	return fallback_xform.affine_inverse() * world_pos
 
 
@@ -212,6 +216,45 @@ func _roll_blocker_type(level: int, rng: RandomNumberGenerator) -> String:
 	return "mag_iron" if (level >= 3 and rng.randf() < 0.45) else "soft_balloon"
 
 
+func _spawn_chunk_entity(ent: Node3D, chunk: TrackChunkBase) -> void:
+	var z_min := chunk.exit_z + CHUNK_Z_MARGIN
+	var z_max := chunk.entry_z - CHUNK_Z_MARGIN
+	ent.position.z = clampf(ent.position.z, z_min, z_max)
+
+	if ent is RigidBody3D:
+		ent.position = _resolve_rigidbody_clearance(ent.position, z_min, z_max)
+
+	_spawn_entity(ent)
+
+
+func _resolve_rigidbody_clearance(desired: Vector3, z_min: float, z_max: float) -> Vector3:
+	var candidate := Vector3(desired.x, desired.y, clampf(desired.z, z_min, z_max))
+	if _is_rigidbody_pos_clear(candidate):
+		return candidate
+
+	# Deterministic spiral search within safe lane/chunk bounds if any candidate ever approaches another RigidBody3D
+	var x_offsets: Array[float] = [0.0, -1.0, 1.0, -2.0, 2.0, -2.9, 2.9]
+	var z_offsets: Array[float] = [0.0, -1.95, 1.95, -3.9, 3.9]
+	for dz in z_offsets:
+		var test_z := clampf(candidate.z + dz, z_min, z_max)
+		for dx in x_offsets:
+			var test_x := clampf(candidate.x + dx, -3.8, 3.8)
+			var probe := Vector3(test_x, candidate.y, test_z)
+			if _is_rigidbody_pos_clear(probe):
+				return probe
+	return candidate
+
+
+func _is_rigidbody_pos_clear(pos: Vector3) -> bool:
+	var p2 := Vector2(pos.x, pos.z)
+	for other in active_entities:
+		if other is RigidBody3D and is_instance_valid(other):
+			var o2 := Vector2(other.position.x, other.position.z)
+			if p2.distance_to(o2) < MIN_RB_CLEARANCE_XZ:
+				return false
+	return true
+
+
 func _populate_chunk_entities(
 	chunk: TrackChunkBase,
 	level: int,
@@ -224,179 +267,203 @@ func _populate_chunk_entities(
 
 	match chunk.chunk_type:
 		"StraightWide":
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(rng.randf_range(-2.2, 2.2), 0.06, z0 - 6.5)))
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(rng.randf_range(-2.2, 2.2), 0.06, z0 - 6.2)), chunk)
 			var side_sign := -1.0 if rng.randf() < 0.5 else 1.0
 			var crate_count := 2 + density_extra
 
 			if is_first_chunk:
 				# Optional side SpringPad arc on opening chunk while keeping center lane welcoming
 				var spring_x := side_sign * 3.1
-				_spawn_entity(TrackEntityFactory.create_spring_pad(Vector3(spring_x, 0.0, z0 - 10.5)))
-				_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(spring_x, 2.7, z0 - 16.5)))
-				_spawn_entity(
+				_spawn_chunk_entity(TrackEntityFactory.create_spring_pad(Vector3(spring_x, 0.0, z0 - 10.5)), chunk)
+				_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(spring_x, 2.7, z0 - 16.5)), chunk)
+				_spawn_chunk_entity(
 					TrackEntityFactory.create_aerial_blocker(
 						Vector3(spring_x - side_sign * 0.8, 2.6, z0 - 19.5),
 						"soft_balloon",
 						rng.randf_range(0.0, TAU)
-					)
+					),
+					chunk
 				)
+				var z_step := minf(2.7, 12.0 / float(maxi(1, crate_count - 1)))
 				for i in range(crate_count):
-					var cx := rng.randf_range(-1.9, 1.9)
-					var cz := z0 - 12.5 - float(i) * 2.8
-					_spawn_entity(TrackEntityFactory.create_crate(Vector3(cx, 0.64, cz), _roll_crate_tier(level, rng)))
+					var lane_sign := -1.0 if (i % 2 == 0) else 1.0
+					var cx := lane_sign * rng.randf_range(0.95, 2.05)
+					var cz := z0 - 12.0 - float(i) * z_step
+					_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(cx, 0.64, cz), _roll_crate_tier(level, rng)), chunk)
 			else:
 				# Side launch ramp (+16° frosted cyan acrylic) leaping past ground 20kg ShieldBrute!
 				var ramp_x := side_sign * 3.2
 				chunk.add_side_launch_ramp(Vector3(ramp_x, 0.0, -10.5), 2.4)
-				_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(ramp_x, 2.5, z0 - 16.8)))
+				_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(ramp_x, 2.5, z0 - 16.8)), chunk)
 				if level >= 2:
-					_spawn_entity(
+					_spawn_chunk_entity(
 						TrackEntityFactory.create_aerial_blocker(
 							Vector3(ramp_x - side_sign * 0.75, 2.6, z0 - 19.8),
 							_roll_blocker_type(level, rng),
 							rng.randf_range(0.0, TAU)
-						)
+						),
+						chunk
 					)
-				_spawn_entity(TrackEntityFactory.create_shield_brute(Vector3(-side_sign * 1.1, 0.73, z0 - 15.8)))
+				_spawn_chunk_entity(TrackEntityFactory.create_shield_brute(Vector3(-side_sign * 1.15, 0.73, z0 - 15.6)), chunk)
 
 				if rng.randf() < 0.55:
 					var opp_x := -side_sign * 3.0
-					_spawn_entity(TrackEntityFactory.create_spring_pad(Vector3(opp_x, 0.0, z0 - 9.5)))
-					_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(opp_x, 2.75, z0 - 15.5)))
-					_spawn_entity(
+					_spawn_chunk_entity(TrackEntityFactory.create_spring_pad(Vector3(opp_x, 0.0, z0 - 9.5)), chunk)
+					_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(opp_x, 2.75, z0 - 15.5)), chunk)
+					_spawn_chunk_entity(
 						TrackEntityFactory.create_aerial_blocker(
 							Vector3(opp_x + side_sign * 0.7, 2.65, z0 - 18.2),
 							_roll_blocker_type(level, rng),
 							rng.randf_range(0.0, TAU)
-						)
+						),
+						chunk
 					)
 
-				for i in range(crate_count):
-					var lane_min := -1.8 if side_sign > 0.0 else -0.4
-					var lane_max := 0.4 if side_sign > 0.0 else 1.8
-					var cx := rng.randf_range(lane_min, lane_max)
-					var cz := z0 - 11.8 - float(i) * 2.9
-					if absf(cz - (z0 - 15.8)) < 1.7:
-						cz -= 1.8
-					_spawn_entity(TrackEntityFactory.create_crate(Vector3(cx, 0.64, cz), _roll_crate_tier(level, rng)))
+				if rng.randf() < 0.55:
+					_spawn_chunk_entity(TrackEntityFactory.create_explosive_barrel(Vector3(-side_sign * 2.95, 0.65, z0 - 20.4)), chunk)
+
+				var crate_slots: Array[Vector2] = [
+					Vector2(-side_sign * 1.15, -11.4),
+					Vector2(side_sign * 0.95, -14.2),
+					Vector2(side_sign * 1.35, -18.0),
+					Vector2(-side_sign * 0.65, -20.6),
+					Vector2(side_sign * 2.25, -22.2),
+					Vector2(-side_sign * 1.35, -24.2),
+				]
+				for i in range(mini(crate_count, crate_slots.size())):
+					var slot := crate_slots[i]
+					var cx := slot.x + rng.randf_range(-0.18, 0.18)
+					var cz := z0 + slot.y
+					_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(cx, 0.64, cz), _roll_crate_tier(level, rng)), chunk)
 
 				if rng.randf() < 0.65:
-					_spawn_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 23.0), 2.8))
-				if rng.randf() < 0.55:
-					_spawn_entity(TrackEntityFactory.create_explosive_barrel(Vector3(-side_sign * 2.6, 0.65, z0 - 19.6)))
+					_spawn_chunk_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 23.2), 2.8), chunk)
 
 		"WaveHills":
 			var ring_x_1 := rng.randf_range(-2.2, 2.2)
 			var offset_dir_1 := 1.35 if rng.randf() < 0.5 else -1.35
-			_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(ring_x_1, 2.75, z0 - 9.6)))
-			_spawn_entity(
+			_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(ring_x_1, 2.75, z0 - 9.6)), chunk)
+			_spawn_chunk_entity(
 				TrackEntityFactory.create_aerial_blocker(
 					Vector3(clampf(ring_x_1 + offset_dir_1, -3.2, 3.2), 2.65, z0 - 11.6),
 					_roll_blocker_type(level, rng),
 					rng.randf_range(0.0, TAU)
-				)
+				),
+				chunk
 			)
 
 			# Central trough targets (crates + explosive barrel) rewarded by landing shockwaves
-			_spawn_entity(TrackEntityFactory.create_crate(Vector3(-2.2, 0.64, z0 - 15.0), _roll_crate_tier(level, rng)))
-			_spawn_entity(TrackEntityFactory.create_crate(Vector3(2.2, 0.64, z0 - 15.0), _roll_crate_tier(level, rng)))
+			_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(-2.2, 0.64, z0 - 15.0), _roll_crate_tier(level, rng)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(2.2, 0.64, z0 - 15.0), _roll_crate_tier(level, rng)), chunk)
 			if rng.randf() < 0.75:
-				_spawn_entity(TrackEntityFactory.create_explosive_barrel(Vector3(0.0, 0.65, z0 - 15.0)))
+				_spawn_chunk_entity(TrackEntityFactory.create_explosive_barrel(Vector3(0.0, 0.65, z0 - 15.0)), chunk)
 
 			var ring_x_2 := rng.randf_range(-2.2, 2.2)
-			_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(ring_x_2, 2.85, z0 - 23.0)))
-			_spawn_entity(
+			_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(ring_x_2, 2.85, z0 - 23.0)), chunk)
+			_spawn_chunk_entity(
 				TrackEntityFactory.create_aerial_blocker(
 					Vector3(clampf(-ring_x_2 * 0.7, -3.0, 3.0), 2.65, z0 - 25.2),
 					_roll_blocker_type(level, rng),
 					rng.randf_range(0.0, TAU)
-				)
+				),
+				chunk
 			)
 
 		"NarrowBridge":
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, z0 - 7.5)))
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, z0 - 16.5)))
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, z0 - 7.5)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, z0 - 16.5)), chunk)
 			if level >= 2:
-				_spawn_entity(
+				_spawn_chunk_entity(
 					TrackEntityFactory.create_crate(
 						Vector3(rng.randf_range(-0.9, 0.9), 0.64, z0 - 12.0),
 						_roll_crate_tier(level, rng)
-					)
+					),
+					chunk
 				)
 
 		"SplitPath":
 			# Left lane (-3.1): High risk, monsters + barrel + double BoostPads!
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(-3.1, 0.06, z0 - 6.5)))
-			_spawn_entity(TrackEntityFactory.create_explosive_barrel(Vector3(-3.1, 0.65, z0 - 13.0)))
-			_spawn_entity(TrackEntityFactory.create_crate(Vector3(-2.2, 0.64, z0 - 16.0), _roll_crate_tier(level, rng)))
-			_spawn_entity(TrackEntityFactory.create_crate(Vector3(-4.0, 0.64, z0 - 16.0), _roll_crate_tier(level, rng)))
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(-3.1, 0.06, z0 - 6.5)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_explosive_barrel(Vector3(-3.1, 0.65, z0 - 12.8)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(-2.15, 0.64, z0 - 15.6), _roll_crate_tier(level, rng)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(-4.05, 0.64, z0 - 16.6), _roll_crate_tier(level, rng)), chunk)
 			if level >= 2:
-				_spawn_entity(TrackEntityFactory.create_shield_brute(Vector3(-3.1, 0.73, z0 - 21.0)))
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(-3.1, 0.06, z0 - 26.5)))
+				_spawn_chunk_entity(TrackEntityFactory.create_shield_brute(Vector3(-3.1, 0.73, z0 - 21.0)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(-3.1, 0.06, z0 - 26.5)), chunk)
 
 			# Right lane (+3.1): SpringPad vault over SlimeZone with aerial bonus ring & blocker
-			_spawn_entity(TrackEntityFactory.create_spring_pad(Vector3(3.1, 0.0, z0 - 9.0)))
-			_spawn_entity(TrackEntityFactory.create_slime_zone(Vector3(3.1, 0.05, z0 - 17.5), Vector2(3.6, 10.0)))
-			_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(3.1, 2.75, z0 - 15.5)))
-			_spawn_entity(
+			_spawn_chunk_entity(TrackEntityFactory.create_spring_pad(Vector3(3.1, 0.0, z0 - 9.0)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_slime_zone(Vector3(3.1, 0.05, z0 - 17.5), Vector2(3.6, 10.0)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(3.1, 2.75, z0 - 15.5)), chunk)
+			_spawn_chunk_entity(
 				TrackEntityFactory.create_aerial_blocker(
 					Vector3(2.35, 2.65, z0 - 18.5),
 					_roll_blocker_type(level, rng),
 					rng.randf_range(0.0, TAU)
-				)
+				),
+				chunk
 			)
 
 		"RampGap":
 			# BoostPad right before the ramp + AerialBonusRing & offset AerialBlocker over chasm!
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, z0 - 5.2)))
-			_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(0.0, 2.8, z0 - 16.5)))
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, z0 - 5.2)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(0.0, 2.8, z0 - 16.5)), chunk)
 			var chasm_blocker_x := 0.85 if rng.randf() < 0.5 else -0.85
-			_spawn_entity(
+			_spawn_chunk_entity(
 				TrackEntityFactory.create_aerial_blocker(
 					Vector3(chasm_blocker_x, 2.75, z0 - 18.4),
 					_roll_blocker_type(level, rng),
 					rng.randf_range(0.0, TAU)
-				)
+				),
+				chunk
 			)
 			# Crates & monsters on landing deck so landing shockwave (Quake Refractor) blasts them all!
-			_spawn_entity(TrackEntityFactory.create_crate(Vector3(-1.4, 0.64, z0 - 22.5), _roll_crate_tier(level, rng)))
-			_spawn_entity(TrackEntityFactory.create_crate(Vector3(1.4, 0.64, z0 - 22.5), _roll_crate_tier(level, rng)))
-			_spawn_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 25.0), 2.8))
+			_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(-1.4, 0.64, z0 - 22.5), _roll_crate_tier(level, rng)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_crate(Vector3(1.4, 0.64, z0 - 22.5), _roll_crate_tier(level, rng)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 25.0), 2.8), chunk)
 
 		"PinballAlley":
-			_spawn_entity(TrackEntityFactory.create_pinball_bumper(Vector3(-2.2, 0.65, z0 - 7.0)))
-			_spawn_entity(TrackEntityFactory.create_pinball_bumper(Vector3(2.2, 0.65, z0 - 13.0)))
-			_spawn_entity(TrackEntityFactory.create_pinball_bumper(Vector3(0.0, 0.65, z0 - 19.0)))
-			_spawn_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 10.0), 3.0))
-			_spawn_entity(
+			_spawn_chunk_entity(TrackEntityFactory.create_pinball_bumper(Vector3(-2.2, 0.65, z0 - 7.0)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_pinball_bumper(Vector3(2.2, 0.65, z0 - 13.0)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_pinball_bumper(Vector3(0.0, 0.65, z0 - 19.0)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 10.0), 3.0), chunk)
+			_spawn_chunk_entity(
 				TrackEntityFactory.create_crate(
 					Vector3(rng.randf_range(-3.2, 3.2), 0.64, z0 - 16.0),
 					_roll_crate_tier(level, rng)
-				)
+				),
+				chunk
 			)
 			if level >= 3:
-				_spawn_entity(TrackEntityFactory.create_explosive_barrel(Vector3(rng.randf_range(-2.5, 2.5), 0.65, z0 - 22.5)))
+				_spawn_chunk_entity(TrackEntityFactory.create_explosive_barrel(Vector3(rng.randf_range(-2.5, 2.5), 0.65, z0 - 22.5)), chunk)
 
 		"FunnelGauntlet":
-			_spawn_entity(TrackEntityFactory.create_spring_pad(Vector3(0.0, 0.0, z0 - 5.2)))
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(-2.4, 0.06, z0 - 5.2)))
-			_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(2.4, 0.06, z0 - 5.2)))
-			_spawn_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(0.0, 2.8, z0 - 11.8)))
-			_spawn_entity(
+			_spawn_chunk_entity(TrackEntityFactory.create_spring_pad(Vector3(0.0, 0.0, z0 - 5.2)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(-2.4, 0.06, z0 - 5.2)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_boost_pad(Vector3(2.4, 0.06, z0 - 5.2)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_aerial_bonus_ring(Vector3(0.0, 2.8, z0 - 11.8)), chunk)
+			_spawn_chunk_entity(
 				TrackEntityFactory.create_aerial_blocker(
 					Vector3(rng.randf_range(-1.1, 1.1), 2.75, z0 - 14.6),
 					_roll_blocker_type(level, rng),
 					rng.randf_range(0.0, TAU)
-				)
+				),
+				chunk
 			)
-			_spawn_entity(TrackEntityFactory.create_explosive_barrel(Vector3(0.0, 0.65, z0 - 13.0)))
-			_spawn_entity(TrackEntityFactory.create_shield_brute(Vector3(-1.8, 0.73, z0 - 15.8)))
-			_spawn_entity(TrackEntityFactory.create_shield_brute(Vector3(1.8, 0.73, z0 - 15.8)))
-			for i in range(3 + density_extra):
-				_spawn_entity(
+			_spawn_chunk_entity(TrackEntityFactory.create_explosive_barrel(Vector3(0.0, 0.65, z0 - 12.8)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_shield_brute(Vector3(-1.85, 0.73, z0 - 15.6)), chunk)
+			_spawn_chunk_entity(TrackEntityFactory.create_shield_brute(Vector3(1.85, 0.73, z0 - 15.6)), chunk)
+			var funnel_crates := 3 + density_extra
+			var funnel_z_step := minf(2.1, 9.9 / float(maxi(1, funnel_crates - 1)))
+			for i in range(funnel_crates):
+				var lane_sign := -1.0 if (i % 2 == 0) else 1.0
+				var cx := lane_sign * rng.randf_range(1.15, 2.55)
+				var cz := z0 - 18.2 - float(i) * funnel_z_step
+				_spawn_chunk_entity(
 					TrackEntityFactory.create_crate(
-						Vector3(rng.randf_range(-2.8, 2.8), 0.64, z0 - 19.0 - float(i) * 2.0),
+						Vector3(cx, 0.64, cz),
 						_roll_crate_tier(level, rng)
-					)
+					),
+					chunk
 				)
-			_spawn_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 27.0), 3.0))
+			_spawn_chunk_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 27.2), 3.0), chunk)

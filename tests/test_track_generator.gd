@@ -7,6 +7,7 @@ func run() -> void:
 	await _test_sloped_track_root_and_coordinate_transforms()
 	await _test_wave_hills_side_launch_ramp_and_vertical_entities()
 	await _test_deterministic_multi_level_seed_layout()
+	await _test_rigidbody_clearance_and_chunk_z_bounds()
 
 
 func _test_track_length_scaling_and_seamless_alignment() -> void:
@@ -155,6 +156,27 @@ func _test_sloped_track_root_and_coordinate_transforms() -> void:
 		gen.generate_track(2, 5353)
 		assert_true(ball.track_reference == gen.get_track_root(), "Regenerating track refreshes sibling PlayerBall3D.track_reference")
 
+		# Null _track_root fallback uses global_transform when generator is inside tree under an offset parent
+		var offset_holder := Node3D.new()
+		offset_holder.position = Vector3(5.0, 3.0, -4.0)
+		root.add_child(offset_holder)
+		var gen_offset = gen_script.new()
+		offset_holder.add_child(gen_offset)
+		var null_root_world: Vector3 = gen_offset.track_local_to_world(Vector3.ZERO)
+		assert_approx(
+			null_root_world.distance_to(Vector3(5.0, 3.0, -4.0)),
+			0.0,
+			0.001,
+			"In-tree null _track_root fallback uses global_transform origin"
+		)
+		var null_root_local: Vector3 = gen_offset.world_to_track_local(null_root_world)
+		assert_approx(
+			null_root_local.distance_to(Vector3.ZERO),
+			0.0,
+			0.001,
+			"In-tree null _track_root world_to_track_local round-trips via global_transform"
+		)
+
 	root.queue_free()
 	await scene_tree.process_frame
 
@@ -181,7 +203,8 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 	for child in wave_chunk.get_children():
 		if child is StaticBody3D and not child.is_in_group("track_rail"):
 			peak_slab_y = maxf(peak_slab_y, (child as StaticBody3D).position.y)
-	assert_gt(peak_slab_y, 1.0, "WaveHills builds elevated beechwood hill crests above y=+1.0m")
+	var crest_top_y: float = peak_slab_y + float(chunk_script.FLOOR_THICKNESS) * 0.5
+	assert_approx(crest_top_y, 1.45, 0.05, "WaveHills crest top surface reaches +1.45m (±0.05m) local Y")
 
 	assert_true(wave_chunk.has_method("add_side_launch_ramp"), "TrackChunkBase exposes add_side_launch_ramp()")
 	if wave_chunk.has_method("add_side_launch_ramp"):
@@ -302,6 +325,56 @@ func _test_deterministic_multi_level_seed_layout() -> void:
 		var sig_diff: Dictionary = _capture_track_signature(gen_b.generate_track(lvl, diff_seed))
 		var differs: bool = (sig_a["chunk_types"] != sig_diff["chunk_types"]) or (sig_a["entity_records"] != sig_diff["entity_records"])
 		assert_true(differs, "Different seed on Level %d produces a different track layout" % lvl)
+
+	root.queue_free()
+	await scene_tree.process_frame
+
+
+func _test_rigidbody_clearance_and_chunk_z_bounds() -> void:
+	var gen_script: GDScript = load("res://src/track/track_generator_3d.gd")
+	if gen_script == null:
+		return
+
+	var root := Node3D.new()
+	scene_tree.root.add_child(root)
+	var gen = gen_script.new()
+	root.add_child(gen)
+
+	var min_rb_dist := 999.0
+	var out_of_bounds_count := 0
+
+	for lvl in [1, 3, 5, 9]:
+		for s in range(1, 7):
+			var info: Dictionary = gen.generate_track(lvl, lvl * 10007 + s * 313)
+			var fin_z := float(info["finish_z"])
+			var start_apron_z := -float(gen.START_APRON_LEN)
+			var rbs: Array[Node3D] = []
+
+			var ent_idx := 0
+			for ent in info["entities"]:
+				var node_ent := ent as Node3D
+				# Entity 0 is the start-apron BoostPad at z = -7.5; all chunk entities must stay inside chunk Z bounds
+				if ent_idx == 0:
+					if node_ent.position.z > 4.0 or node_ent.position.z < fin_z:
+						out_of_bounds_count += 1
+				else:
+					if node_ent.position.z > start_apron_z - 1.4 or node_ent.position.z < fin_z + 1.4:
+						out_of_bounds_count += 1
+				if node_ent is RigidBody3D:
+					rbs.append(node_ent)
+				ent_idx += 1
+
+			for i in range(rbs.size()):
+				var pi := Vector2(rbs[i].position.x, rbs[i].position.z)
+				for j in range(i + 1, rbs.size()):
+					var pj := Vector2(rbs[j].position.x, rbs[j].position.z)
+					min_rb_dist = minf(min_rb_dist, pi.distance_to(pj))
+
+	assert_eq(out_of_bounds_count, 0, "All chunk entities spawn strictly within [finish_z + 1.4, -START_APRON_LEN - 1.4]")
+	assert_true(
+		min_rb_dist >= 1.85,
+		"Every RigidBody3D pair across Levels 1/3/5/9 maintains >= 1.85m (>> 1.65m) XZ clearance (min=%0.3fm)" % min_rb_dist
+	)
 
 	root.queue_free()
 	await scene_tree.process_frame
