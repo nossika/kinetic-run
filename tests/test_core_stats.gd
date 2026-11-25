@@ -6,6 +6,7 @@ func run() -> void:
 	_test_stat_sheet_dual_multiplier_synergy()
 	_test_run_state_length_progression_and_timer()
 	_test_deterministic_seed_parsing_and_subseeds()
+	_test_material_library_metadata_and_friction()
 
 
 func _test_stat_sheet_defaults_and_clamping() -> void:
@@ -138,3 +139,66 @@ func _test_deterministic_seed_parsing_and_subseeds() -> void:
 	state_b.start_new_run_from_text("999999999999999999999999999992")
 	assert_gt(float(state_a.run_seed), 0.0, "Huge numeric string hashes safely to positive int")
 	assert_true(state_a.run_seed != state_b.run_seed, "Distinct huge numeric strings do not clamp to identical INT64_MAX")
+
+
+func _test_material_library_metadata_and_friction() -> void:
+	var lib_script: GDScript = load("res://src/core/material_library.gd")
+	assert_true(lib_script != null, "MaterialLibrary script must exist")
+	if lib_script == null:
+		return
+
+	var pmat: PhysicsMaterial = lib_script.high_friction_physics()
+	assert_gt(pmat.friction, 0.80, "Tabletop resting physics material has high static friction (> tan 11 deg)")
+	assert_approx(pmat.friction, 0.88, 0.001, "Default high_friction_physics friction is 0.88")
+	assert_approx(pmat.bounce, 0.12, 0.001, "Default high_friction_physics bounce is 0.12")
+
+	var custom_pmat: PhysicsMaterial = lib_script.high_friction_physics(0.92, 0.05)
+	assert_approx(custom_pmat.friction, 0.92, 0.001, "Custom friction parameter respected")
+	assert_approx(custom_pmat.bounce, 0.05, 0.001, "Custom bounce parameter respected")
+
+	# Verify all 9 material builders return valid StandardMaterial3D with distinct hard vs soft PBR attributes
+	var beech: StandardMaterial3D = lib_script.make_beechwood_material()
+	var acrylic: StandardMaterial3D = lib_script.make_frosted_acrylic_material(Color(0.2, 0.8, 0.95))
+	var light_crate: StandardMaterial3D = lib_script.make_wood_crate_material(false)
+	var heavy_crate: StandardMaterial3D = lib_script.make_wood_crate_material(true)
+	var iron: StandardMaterial3D = lib_script.make_cast_iron_material()
+	var tungsten: StandardMaterial3D = lib_script.make_tungsten_ball_material()
+	var barrel: StandardMaterial3D = lib_script.make_retro_barrel_material()
+	var silicone: StandardMaterial3D = lib_script.make_silicone_soft_material(Color(1.0, 0.45, 0.65))
+	var jelly_out: StandardMaterial3D = lib_script.make_jelly_outer_material(Color(0.35, 0.95, 0.50))
+	var jelly_core: StandardMaterial3D = lib_script.make_jelly_core_material(Color(0.45, 1.0, 0.55))
+
+	assert_true(beech != null and beech.uv1_triplanar, "Beechwood track material enables world/local triplanar tiling")
+	assert_true(acrylic != null and acrylic.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA, "Frosted acrylic uses alpha transparency")
+	assert_true(light_crate != null and heavy_crate != null, "Both light and heavy wood crate materials created")
+	assert_true(light_crate.albedo_color != heavy_crate.albedo_color, "Heavy wood crate has distinct darker reinforced tint")
+	assert_gt(iron.metallic, 0.65, "Cast iron is metallic")
+	assert_gt(tungsten.metallic, 0.75, "Tungsten ball is highly metallic")
+	assert_lt(tungsten.roughness, 0.25, "Tungsten ball is polished")
+	assert_true(barrel != null, "Retro barrel material created")
+	assert_gt(silicone.roughness, 0.75, "Silicone soft material is matte high-roughness")
+	assert_eq(jelly_out.transparency, BaseMaterial3D.TRANSPARENCY_ALPHA, "Jelly outer layer is translucent")
+	assert_lt(jelly_out.roughness, 0.20, "Jelly outer layer is glossy")
+	assert_true(jelly_core.emission_enabled, "Jelly core glows softly from within")
+
+	var dummy := Node3D.new()
+	lib_script.attach_weight_labels(dummy, "20kg", Vector3(1.4, 1.4, 1.4))
+	assert_eq(String(dummy.get_meta("weight_label", "")), "20kg", "attach_weight_labels records weight_label metadata")
+
+	var fixed_dummy := Node3D.new()
+	lib_script.attach_anchored_flange_base(fixed_dummy, -0.6, 0.8, 0.8, true)
+	assert_true(bool(fixed_dummy.get_meta("is_anchored_fixed", false)), "attach_anchored_flange_base marks node anchored")
+
+	for tex_path in [
+		lib_script.TEX_TRACK_BEECHWOOD,
+		lib_script.TEX_CRATE_BALSA_WOOD,
+		lib_script.TEX_METAL_CAST_IRON,
+		lib_script.TEX_ANCHOR_HAZARD_STRIPE,
+		lib_script.TEX_BARREL_RETRO_HAZARD,
+		lib_script.TEX_JELLY_BUBBLE_SOFT,
+		lib_script.BUNDLED_FONT_PATH,
+	]:
+		assert_true(ResourceLoader.exists(tex_path), "Imported asset exists: %s" % tex_path)
+
+	dummy.free()
+	fixed_dummy.free()
