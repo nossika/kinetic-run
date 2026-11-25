@@ -127,12 +127,12 @@ func _register_initial_12() -> void:
 	_register(
 		UpgradeDefinition.new(
 			"tail_thruster",
-			"侧倾尾流喷口",
+			"侧喷尾流喷口",
 			"common",
 			"converter",
-			"最大侧倾角 +12°；侧倾超过 25° 切线时，将横向滑移速度持续转化为前向推力。"
+			"左右侧向推力 ×1.35；按住侧推持续变道时，将横向速度持续转化为前向推力。"
 		)
-		.with_flat("max_tilt_deg", 12.0)
+		.with_mult("tilt_lateral_force_mult", 0.35)
 		.with_hook("on_physics_tick", _hook_tail_thruster)
 	)
 
@@ -247,7 +247,7 @@ static func _hook_tail_thruster(
 	out: Dictionary,
 	delta: float
 ) -> void:
-	if absf(ctx.tilt_deg) <= 25.0 or delta <= 0.0:
+	if absf(ctx.tilt_deg) <= 0.1 or delta <= 0.0:
 		return
 	var mult := bus.get_effective_impulse_mult() * float(count)
 	var thrust := (6.5 + 0.85 * absf(ctx.lateral_speed)) * ctx.mass * delta * mult

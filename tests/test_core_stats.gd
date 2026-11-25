@@ -5,6 +5,7 @@ func run() -> void:
 	_test_stat_sheet_defaults_and_clamping()
 	_test_stat_sheet_dual_multiplier_synergy()
 	_test_run_state_length_progression_and_timer()
+	_test_deterministic_seed_parsing_and_subseeds()
 
 
 func _test_stat_sheet_defaults_and_clamping() -> void:
@@ -89,3 +90,51 @@ func _test_run_state_length_progression_and_timer() -> void:
 	state.record_physics_sample(20.0, 600.0)
 	assert_approx(state.peak_speed_kmh, 72.0, 0.01, "20 m/s recorded as 72 km/h")
 	assert_approx(state.max_kinetic_energy, 600.0, 0.01, "Max kinetic energy recorded")
+
+
+func _test_deterministic_seed_parsing_and_subseeds() -> void:
+	var run_script: GDScript = load("res://src/core/run_state.gd")
+	var state_a = run_script.new()
+	var state_b = run_script.new()
+
+	state_a.start_new_run_from_text("884866")
+	state_b.start_new_run_from_text("  884866 ")
+	assert_eq(state_a.run_seed, 884866, "Numeric seed string parses to exact integer")
+	assert_eq(state_a.run_seed, state_b.run_seed, "Trimmed numeric seeds match")
+	assert_eq(state_a.seed_text, "884866", "seed_text normalized")
+
+	state_a.start_new_run_from_text("给我滚FLY")
+	state_b.start_new_run_from_text("给我滚FLY")
+	assert_gt(float(state_a.run_seed), 0.0, "Custom string seed hashes to positive int")
+	assert_eq(state_a.run_seed, state_b.run_seed, "Identical string seed hashes deterministically")
+	assert_eq(state_a.seed_text, "给我滚FLY", "Custom text preserved in seed_text")
+
+	var t1_a: int = run_script.derive_track_seed(state_a.run_seed, 1)
+	var t1_b: int = run_script.derive_track_seed(state_b.run_seed, 1)
+	var t2_a: int = run_script.derive_track_seed(state_a.run_seed, 2)
+	var d1_a: int = run_script.derive_draft_seed(state_a.run_seed, 1)
+	var d1_b: int = run_script.derive_draft_seed(state_b.run_seed, 1)
+	var d2_a: int = run_script.derive_draft_seed(state_a.run_seed, 2)
+	assert_eq(t1_a, t1_b, "Same run_seed and level produce identical track sub-seed")
+	assert_true(t1_a != t2_a, "Different levels produce distinct track sub-seeds")
+	assert_true(t1_a != d1_a, "Track seed and draft seed streams are isolated")
+	assert_eq(d1_a, d1_b, "Same run_seed and cleared_level produce identical draft sub-seed")
+	assert_true(d1_a != d2_a, "Different cleared levels produce distinct draft sub-seeds")
+
+	# Edge cases: empty/whitespace, zero, negative integers, huge integer strings
+	state_a.start_new_run_from_text("   ")
+	assert_true(state_a.run_seed >= 100000 and state_a.run_seed <= 999999, "Empty text generates 6-digit readable seed")
+	assert_eq(state_a.seed_text, str(state_a.run_seed), "Auto seed sets matching seed_text")
+
+	state_a.start_new_run_from_text("0")
+	assert_eq(state_a.run_seed, 1, "Zero seed string clamps to positive 1")
+	assert_eq(state_a.seed_text, "0", "Zero seed preserves trimmed text")
+
+	state_a.start_new_run_from_text(" -884866 ")
+	assert_eq(state_a.run_seed, 884866, "Negative integer seed folds to positive int")
+	assert_eq(state_a.seed_text, "-884866", "Negative integer preserves trimmed text")
+
+	state_a.start_new_run_from_text("999999999999999999999999999991")
+	state_b.start_new_run_from_text("999999999999999999999999999992")
+	assert_gt(float(state_a.run_seed), 0.0, "Huge numeric string hashes safely to positive int")
+	assert_true(state_a.run_seed != state_b.run_seed, "Distinct huge numeric strings do not clamp to identical INT64_MAX")

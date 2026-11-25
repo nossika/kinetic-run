@@ -110,6 +110,16 @@ func _test_emergent_wall_drift_and_overload_decay() -> void:
 	bus.on_physics_tick(idle_ctx, 1.2)
 	assert_lt(float(bus.combo_stacks), 20.0, "Overload decays after >2.5s without triggers")
 
+	var bus_thrust = bus_script.new()
+	bus_thrust.apply_upgrade(catalog.get_upgrade("tail_thruster"))
+	assert_gt(bus_thrust.stats.get_stat("tilt_lateral_force_mult"), 1.30, "Tail thruster boosts lateral force mult")
+	var active_thrust_ctx = ctx_script.create(14.0, 6.0, 1.0, 1.5, 0.0, Vector3.UP, Vector3.ZERO, 0, 0)
+	var left_thrust_ctx = ctx_script.create(14.0, -6.0, -1.0, 1.5, 0.0, Vector3.UP, Vector3.ZERO, 0, 0)
+	var idle_thrust_ctx = ctx_script.create(14.0, 6.0, 0.0, 1.5, 0.0, Vector3.UP, Vector3.ZERO, 0, 0)
+	assert_gt(float(bus_thrust.on_physics_tick(active_thrust_ctx, 0.1)["forward_impulse"]), 0.1, "Holding lateral thrust converts lateral speed to forward impulse")
+	assert_gt(float(bus_thrust.on_physics_tick(left_thrust_ctx, 0.1)["forward_impulse"]), 0.1, "Holding left lateral thrust also converts lateral speed to forward impulse")
+	assert_approx(float(bus_thrust.on_physics_tick(idle_thrust_ctx, 0.1)["forward_impulse"]), 0.0, 0.001, "Releasing lateral thrust stops tail thruster conversion")
+
 
 func _test_kinetic_furnace_twin_resonance_and_guardrails() -> void:
 	var catalog_script: GDScript = load("res://src/upgrades/upgrade_catalog.gd")
