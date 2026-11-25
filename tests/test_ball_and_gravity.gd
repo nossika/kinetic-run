@@ -115,11 +115,21 @@ func _test_player_ball_stats_thrust_hud_and_sloped_respawn() -> void:
 	await scene_tree.physics_frame
 	assert_lt(absf(ball.linear_velocity.x), 0.02, "Zero thrust_axis applies no lateral acceleration")
 
-	# Left thrust shows left arrow indicator
+	# Left thrust shows left arrow indicator; clear_thrust_indicators() + set_paused() encapsulate state cleanly
 	ball.step_ball(1.0 / 60.0, -1.0, -20.0)
 	if ball._hud_ring_root != null:
 		assert_true(ball._left_arrow_group.visible, "Left thrust illuminates left arrow indicator")
 		assert_false(ball._right_arrow_group.visible, "Left thrust keeps right arrow hidden")
+	ball.clear_thrust_indicators()
+	if ball._hud_ring_root != null:
+		assert_false(ball._left_arrow_group.visible, "clear_thrust_indicators() hides left arrow")
+
+	ball.linear_velocity = Vector3(1.5, 0.0, -12.0)
+	ball.set_paused(true)
+	assert_true(ball.freeze, "set_paused(true) freezes PlayerBall3D")
+	ball.set_paused(false)
+	assert_false(ball.freeze, "set_paused(false) restores unfrozen state")
+	assert_approx(ball.linear_velocity.z, -12.0, 0.01, "set_paused(false) restores linear_velocity")
 
 	# Legacy flat-world (track_reference == null) fall & respawn compatibility check
 	ball.last_safe_pos = Vector3(0.0, 0.6, -20.0)

@@ -103,6 +103,7 @@ func _test_deterministic_seed_parsing_and_subseeds() -> void:
 	assert_eq(state_a.run_seed, 884866, "Numeric seed string parses to exact integer")
 	assert_eq(state_a.run_seed, state_b.run_seed, "Trimmed numeric seeds match")
 	assert_eq(state_a.seed_text, "884866", "seed_text normalized")
+	assert_eq(state_b.seed_text, "884866", "Trimmed numeric seed_text normalized")
 
 	state_a.start_new_run_from_text("给我滚FLY")
 	state_b.start_new_run_from_text("给我滚FLY")
@@ -182,12 +183,22 @@ func _test_material_library_metadata_and_friction() -> void:
 	assert_true(jelly_core.emission_enabled, "Jelly core glows softly from within")
 
 	var dummy := Node3D.new()
+	var old_front := Node3D.new()
+	old_front.name = "WeightLabelFront"
+	dummy.add_child(old_front)
 	lib_script.attach_weight_labels(dummy, "20kg", Vector3(1.4, 1.4, 1.4))
-	assert_eq(String(dummy.get_meta("weight_label", "")), "20kg", "attach_weight_labels records weight_label metadata")
+	lib_script.attach_weight_labels(dummy, "25kg", Vector3(1.4, 1.4, 1.4))
+	assert_eq(String(dummy.get_meta("weight_label", "")), "25kg", "attach_weight_labels records updated weight_label metadata")
+	assert_true(dummy.get_node_or_null("WeightLabelFront") == null, "attach_weight_labels cleans pre-existing WeightLabelFront idempotently")
 
 	var fixed_dummy := Node3D.new()
+	var old_flange := Node3D.new()
+	old_flange.name = "AnchoredFlangeBase"
+	fixed_dummy.add_child(old_flange)
+	lib_script.attach_anchored_flange_base(fixed_dummy, -0.6, 0.8, 0.8, true)
 	lib_script.attach_anchored_flange_base(fixed_dummy, -0.6, 0.8, 0.8, true)
 	assert_true(bool(fixed_dummy.get_meta("is_anchored_fixed", false)), "attach_anchored_flange_base marks node anchored")
+	assert_true(fixed_dummy.get_node_or_null("AnchoredFlangeBase") == null, "attach_anchored_flange_base cleans pre-existing AnchoredFlangeBase idempotently")
 
 	for tex_path in [
 		lib_script.TEX_TRACK_BEECHWOOD,

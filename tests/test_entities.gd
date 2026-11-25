@@ -405,6 +405,37 @@ func _test_sloped_floor_stability_and_flying_debris_barrel_hit() -> void:
 	assert_lt(absf(barrel.position.z - (-8.0)), 0.15, "1.5kg ExplosiveBarrel sits rock-solid on 11° sloped floor")
 	assert_false(barrel.is_detonated, "ExplosiveBarrel never self-detonates while resting on sloped StaticBody3D floor")
 
+	# Verify sloped track-basis knockback on ShieldBrute & BouncerSlime does not dip into -11° floor
+	var slope_ball = _create_ball_in(root)
+	slope_ball.track_reference = sloped_root
+	slope_ball.global_position = sloped_root.to_global(Vector3(1.5, 0.55, -7.2))
+	slope_ball.linear_velocity = -sloped_root.global_transform.basis.z.normalized() * 12.0
+	slope_ball.step_ball(0.016, 0.0)
+	var pre_local_y: float = sloped_root.to_local(slope_ball.global_position).y
+	brute.interact_with_ball(slope_ball)
+	var post_local_y: float = sloped_root.to_local(slope_ball.global_position).y
+	assert_approx(post_local_y, pre_local_y, 0.01, "ShieldBrute uphill knockback stays parallel to -11° floor (0cm floor dip)")
+
+	var slope_slime = factory_script.create_bouncer_slime(Vector3(0.0, 0.65, -14.0), 0.0)
+	sloped_root.add_child(slope_slime)
+	slope_ball.global_position = sloped_root.to_global(Vector3(0.0, 0.55, -13.2))
+	slope_ball.linear_velocity = (
+		-sloped_root.global_transform.basis.z.normalized() * 6.0
+		- sloped_root.global_transform.basis.y.normalized() * 2.0
+	)
+	slope_ball.step_ball(0.016, 0.0)
+	slope_slime.interact_with_ball(slope_ball)
+	assert_gt(
+		slope_ball.linear_velocity.dot(sloped_root.global_transform.basis.z.normalized()),
+		7.5,
+		"BouncerSlime rebounds uphill along sloped track +Z"
+	)
+	assert_gt(
+		slope_ball.linear_velocity.dot(sloped_root.global_transform.basis.y.normalized()),
+		1.4,
+		"BouncerSlime clears downward into-slope velocity and lifts cleanly along sloped +Y"
+	)
+
 	# Launch a smashed flying crate directly toward a target ExplosiveBarrel across physics frames
 	var target_barrel = factory_script.create_explosive_barrel(Vector3(0.0, 2.5, -24.0))
 	target_barrel.gravity_scale = 0.0

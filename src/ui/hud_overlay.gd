@@ -278,7 +278,7 @@ func _build_seed_modal() -> void:
 	_seed_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.05, 0.07, 0.12, 0.76)
+	backdrop.color = Color(0.05, 0.07, 0.12, 0.46)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	_seed_modal.add_child(backdrop)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

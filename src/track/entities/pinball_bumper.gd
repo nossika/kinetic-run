@@ -35,6 +35,27 @@ func _ready() -> void:
 	RenderHelper.attach_mesh(post_inst, post_mesh)
 	add_child(post_inst)
 
+	if DisplayServer.get_name() != "headless":
+		var cap_lbl := Label3D.new()
+		cap_lbl.name = "BumperTopFixedStencil"
+		var font := load(MaterialLibrary.BUNDLED_FONT_PATH) as Font
+		if font != null:
+			cap_lbl.font = font
+		cap_lbl.text = "FIXED"
+		cap_lbl.font_size = 44
+		cap_lbl.outline_size = 11
+		cap_lbl.pixel_size = 0.0042
+		cap_lbl.modulate = Color(1.0, 0.86, 0.26)
+		cap_lbl.outline_modulate = Color(0.08, 0.10, 0.14, 0.96)
+		cap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cap_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cap_lbl.double_sided = false
+		cap_lbl.shaded = false
+		cap_lbl.render_priority = 3
+		cap_lbl.position = Vector3(0.0, 0.635, 0.0)
+		cap_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		add_child(cap_lbl)
+
 	_cushion_ring = MeshInstance3D.new()
 	_cushion_ring.name = "SiliconeBounceRing"
 	var ring_mesh := TorusMesh.new()

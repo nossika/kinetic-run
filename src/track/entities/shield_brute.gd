@@ -116,17 +116,35 @@ func _on_body_entered(body: Node) -> void:
 		interact_with_ball(body as PlayerBall3D)
 
 
+func _resolve_uphill_dir(ball: PlayerBall3D) -> Vector3:
+	if ball != null and ball.has_valid_track_reference():
+		var tb := ball.get_track_basis()
+		if tb.z.length_squared() > 0.0001:
+			return tb.z.normalized()
+	var parent_3d := get_parent() as Node3D
+	if parent_3d != null:
+		var pb := parent_3d.global_transform.basis if parent_3d.is_inside_tree() else parent_3d.transform.basis
+		if pb.z.length_squared() > 0.0001:
+			return pb.z.normalized()
+	return Vector3.BACK
+
+
 func interact_with_ball(ball: PlayerBall3D) -> void:
 	if is_smashed or ball == null or ball.is_respawning:
 		return
+	var self_pos := global_position if is_inside_tree() else position
 	if ball.get_current_momentum() >= SMASH_MOMENTUM:
 		_smash(Vector3(ball.linear_velocity.x * 0.25, 10.0, -22.0))
-		ball.notify_smash_target(global_position, SPEED_LOSS_RATIO, 0)
+		ball.notify_smash_target(self_pos, SPEED_LOSS_RATIO, 0)
 	elif _hit_cooldown <= 0.0:
 		_hit_cooldown = 0.28
+		var uphill_dir := _resolve_uphill_dir(ball)
 		ball.linear_velocity *= 0.35
-		ball.global_position.z += 0.35
-		ball.notify_wall_or_bumper_bounce(Vector3.BACK, global_position, 0.0)
+		if ball.is_inside_tree():
+			ball.global_position += uphill_dir * 0.35
+		else:
+			ball.position += uphill_dir * 0.35
+		ball.notify_wall_or_bumper_bounce(uphill_dir, self_pos, 0.0)
 
 
 func apply_shockwave(

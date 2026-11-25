@@ -32,7 +32,7 @@ func _ready() -> void:
 
 	_top_pad = Node3D.new()
 	_top_pad.name = "SiliconeTopPad"
-	_top_pad.position = Vector3(0.0, 0.30, 0.0)
+	_top_pad.position = Vector3(0.0, 0.34, 0.0)
 	add_child(_top_pad)
 
 	if DisplayServer.get_name() != "headless":
@@ -58,6 +58,26 @@ func _ready() -> void:
 		RenderHelper.attach_mesh(pad_inst, pad_box)
 		_top_pad.add_child(pad_inst)
 
+		var arrow_lbl := Label3D.new()
+		arrow_lbl.name = "SpringArrowStencil"
+		var font := load(MaterialLibrary.BUNDLED_FONT_PATH) as Font
+		if font != null:
+			arrow_lbl.font = font
+		arrow_lbl.text = "▲▲"
+		arrow_lbl.font_size = 56
+		arrow_lbl.outline_size = 12
+		arrow_lbl.pixel_size = 0.0055
+		arrow_lbl.modulate = Color(0.16, 0.12, 0.06, 0.96)
+		arrow_lbl.outline_modulate = Color(1.0, 0.96, 0.78, 0.92)
+		arrow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		arrow_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		arrow_lbl.double_sided = false
+		arrow_lbl.shaded = false
+		arrow_lbl.render_priority = 3
+		arrow_lbl.position = Vector3(0.0, 0.072, 0.0)
+		arrow_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		_top_pad.add_child(arrow_lbl)
+
 	body_entered.connect(_on_body_entered)
 
 
@@ -67,7 +87,7 @@ func _physics_process(delta: float) -> void:
 
 	var lift := sin(_spring_anim * PI) * 0.32
 	if _top_pad != null:
-		_top_pad.position.y = 0.30 + lift
+		_top_pad.position.y = 0.34 + lift
 	if _coil_root != null:
 		_coil_root.scale.y = 1.0 + lift * 2.2
 

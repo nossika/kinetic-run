@@ -399,11 +399,19 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	world.track_generator.bonus_ring_collected.emit(0.8)
 	assert_approx(world.run_state.time_remaining, 20.8, 0.01, "bonus_ring_collected adds +0.8s to RunState.time_remaining")
 
-	# 2. Opening HUD seed modal pauses countdown and freezes ball; cancelling resumes cleanly
+	# 2. Opening HUD seed modal pauses countdown and freezes ball + track entities; cancelling resumes cleanly
 	if world.hud_overlay.has_method("open_seed_dialog") and world.hud_overlay.has_method("close_seed_dialog"):
+		var pause_slime = TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, -45.0), 2.8)
+		var pause_blocker = TrackEntityFactory.create_aerial_blocker(Vector3(0.0, 3.2, -45.0), "soft_balloon", 0.35)
+		world.track_generator._spawn_entity(pause_slime)
+		world.track_generator._spawn_entity(pause_blocker)
+		await scene_tree.physics_frame
+
 		var pre_vel: Vector3 = Vector3(0.0, -1.5, -14.0)
 		world.player_ball.linear_velocity = pre_vel
 		var paused_time: float = world.run_state.time_remaining
+		var slime_pos_paused: Vector3 = pause_slime.position
+		var blocker_pos_paused: Vector3 = pause_blocker.position
 
 		world.hud_overlay.call("open_seed_dialog")
 		assert_eq(world.game_state, "SEED_INPUT", "Opening seed modal switches game_state to SEED_INPUT")
@@ -412,11 +420,36 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 		for _f in range(10):
 			await scene_tree.physics_frame
 		assert_approx(world.run_state.time_remaining, paused_time, 0.001, "Countdown timer stays paused while SEED_INPUT modal is open")
+		assert_approx(
+			pause_slime.position.distance_to(slime_pos_paused),
+			0.0,
+			0.0001,
+			"BouncerSlime position remains completely frozen while SEED_INPUT is open"
+		)
+		assert_approx(
+			pause_blocker.position.distance_to(blocker_pos_paused),
+			0.0,
+			0.0001,
+			"AerialBlocker position remains completely frozen while SEED_INPUT is open"
+		)
 
 		world.hud_overlay.call("close_seed_dialog")
 		assert_eq(world.game_state, "RACING", "Cancelling seed modal resumes RACING state")
 		assert_false(world.player_ball.freeze, "Cancelling seed modal unfreezes PlayerBall3D")
 		assert_lt(world.player_ball.linear_velocity.z, -10.0, "Cancelling seed modal preserves PlayerBall3D forward velocity")
+
+		for _f in range(10):
+			await scene_tree.physics_frame
+		assert_gt(
+			pause_slime.position.distance_to(slime_pos_paused),
+			0.05,
+			"BouncerSlime resumes patrolling cleanly on SEED_INPUT cancel"
+		)
+		assert_gt(
+			pause_blocker.position.distance_to(blocker_pos_paused),
+			0.01,
+			"AerialBlocker resumes bobbing/swaying cleanly on SEED_INPUT cancel"
+		)
 
 		# Submitting a new seed via HUD modal restarts run on Level 1 with that seed
 		world.hud_overlay.call("open_seed_dialog")

@@ -27,6 +27,11 @@ var _peak_downward_speed: float = 0.0
 var _rail_bounce_cooldown: float = 0.0
 var _saved_velocity_pre_step: Vector3 = Vector3.ZERO
 var last_external_boost_origin: Vector3 = Vector3(INF, INF, INF)
+var _is_paused: bool = false
+var _paused_freeze: bool = false
+var _paused_linear_vel: Vector3 = Vector3.ZERO
+var _paused_angular_vel: Vector3 = Vector3.ZERO
+var _paused_pre_step_vel: Vector3 = Vector3.ZERO
 
 var _collision_shape: CollisionShape3D = null
 var _sphere_shape: SphereShape3D = null
@@ -72,16 +77,24 @@ func setup(p_bus: PhysicsSynergyBus) -> void:
 	sync_from_stats()
 
 
-func _has_valid_track_reference() -> bool:
+func has_valid_track_reference() -> bool:
 	return track_reference != null and is_instance_valid(track_reference)
 
 
-func _get_track_basis() -> Basis:
-	if _has_valid_track_reference():
+func _has_valid_track_reference() -> bool:
+	return has_valid_track_reference()
+
+
+func get_track_basis() -> Basis:
+	if has_valid_track_reference():
 		if track_reference.is_inside_tree():
 			return track_reference.global_transform.basis.orthonormalized()
 		return track_reference.transform.basis.orthonormalized()
 	return Basis.IDENTITY
+
+
+func _get_track_basis() -> Basis:
+	return get_track_basis()
 
 
 func _to_track_local(world_pos: Vector3) -> Vector3:
@@ -300,6 +313,38 @@ func _update_hud_ring_indicators(thrust_axis: float) -> void:
 		_right_arrow_group.visible = true
 
 
+func clear_thrust_indicators() -> void:
+	_update_hud_ring_indicators(0.0)
+
+
+func set_paused(paused: bool) -> void:
+	if paused:
+		if _is_paused:
+			return
+		_is_paused = true
+		_paused_freeze = freeze
+		_paused_linear_vel = linear_velocity
+		_paused_angular_vel = angular_velocity
+		_paused_pre_step_vel = _saved_velocity_pre_step
+		clear_thrust_indicators()
+		freeze = true
+	else:
+		if not _is_paused:
+			return
+		_is_paused = false
+		if is_respawning:
+			freeze = true
+			linear_velocity = Vector3.ZERO
+			angular_velocity = Vector3.ZERO
+			_saved_velocity_pre_step = Vector3.ZERO
+		else:
+			freeze = _paused_freeze
+			if not _paused_freeze:
+				linear_velocity = _paused_linear_vel
+				angular_velocity = _paused_angular_vel
+				_saved_velocity_pre_step = _paused_pre_step_vel
+
+
 func sync_from_stats() -> void:
 	if synergy_bus != null:
 		var st := synergy_bus.stats
@@ -341,6 +386,7 @@ func set_in_slime_zone(inside: bool) -> void:
 
 
 func reset_for_track(start_pos: Vector3) -> void:
+	_is_paused = false
 	is_respawning = false
 	respawn_time_left = 0.0
 	_slime_zone_count = 0

@@ -18,6 +18,7 @@ var _hit_cooldown: float = 0.0
 var _anim_time: float = 0.0
 var _bounce_squash: float = 0.0
 var _visual_root: Node3D = null
+var _sensor: Area3D = null
 
 
 func _init() -> void:
@@ -51,14 +52,14 @@ func _ready() -> void:
 
 	MaterialLibrary.attach_weight_labels(self, "3kg", Vector3(1.3, 1.15, 1.3), Color(0.95, 1.0, 0.92))
 
-	var area := Area3D.new()
+	_sensor = Area3D.new()
 	var col := CollisionShape3D.new()
 	var s_shape := SphereShape3D.new()
 	s_shape.radius = 0.85
 	col.shape = s_shape
-	area.add_child(col)
-	area.body_entered.connect(_on_body_entered)
-	add_child(area)
+	_sensor.add_child(col)
+	_sensor.body_entered.connect(_on_body_entered)
+	add_child(_sensor)
 
 
 func _physics_process(delta: float) -> void:
@@ -99,15 +100,30 @@ func _on_body_entered(body: Node) -> void:
 func interact_with_ball(ball: PlayerBall3D) -> void:
 	if is_smashed or ball == null or ball.is_respawning:
 		return
+	var self_pos := global_position if is_inside_tree() else position
 	if ball.get_current_momentum() >= SMASH_MOMENTUM:
 		_smash(Vector3(ball.linear_velocity.x * 0.3, 9.5, -20.0))
-		ball.notify_smash_target(global_position, SPEED_LOSS_RATIO, 0)
+		ball.notify_smash_target(self_pos, SPEED_LOSS_RATIO, 0)
 	elif _hit_cooldown <= 0.0:
 		_hit_cooldown = 0.22
 		_bounce_squash = 1.0
-		ball.linear_velocity.z = maxf(ball.linear_velocity.z, 0.0) + 8.0
-		ball.linear_velocity.x += signf(ball.global_position.x - global_position.x + 0.05) * 4.0
-		ball.notify_wall_or_bumper_bounce(Vector3.BACK, global_position, 0.0)
+		var b := global_transform.basis.orthonormalized() if is_inside_tree() else transform.basis.orthonormalized()
+		var right_dir := b.x.normalized() if b.x.length_squared() > 0.0001 else Vector3.RIGHT
+		var up_dir := b.y.normalized() if b.y.length_squared() > 0.0001 else Vector3.UP
+		var uphill_dir := b.z.normalized() if b.z.length_squared() > 0.0001 else Vector3.BACK
+
+		var ball_pos := ball.global_position if ball.is_inside_tree() else ball.position
+		var v_lat := ball.linear_velocity.dot(right_dir)
+		var v_up := maxf(ball.linear_velocity.dot(up_dir), 0.0)
+		var v_uphill := maxf(ball.linear_velocity.dot(uphill_dir), 0.0)
+		var lat_push := signf((ball_pos - self_pos).dot(right_dir) + 0.05) * 4.0
+
+		ball.linear_velocity = (
+			right_dir * (v_lat + lat_push)
+			+ up_dir * (v_up + 1.5)
+			+ uphill_dir * (v_uphill + 8.0)
+		)
+		ball.notify_wall_or_bumper_bounce(uphill_dir, self_pos, 0.0)
 
 
 func apply_shockwave(
@@ -119,16 +135,19 @@ func apply_shockwave(
 ) -> void:
 	if is_smashed:
 		return
-	if global_position.distance_to(origin) <= radius and force >= 8.0:
-		var dir := (global_position - origin).normalized()
+	var self_pos := global_position if is_inside_tree() else position
+	if self_pos.distance_to(origin) <= radius and force >= 8.0:
+		var dir := (self_pos - origin).normalized()
 		if dir.length_squared() < 0.01:
 			dir = Vector3(0.0, 1.0, -1.0).normalized()
 		_smash(dir * 18.0 + Vector3(0.0, 8.0, -6.0))
 		if ball != null:
-			ball.notify_smash_target(global_position, 0.0, chain_depth)
+			ball.notify_smash_target(self_pos, 0.0, chain_depth)
 
 
 func _smash(vel: Vector3) -> void:
 	is_smashed = true
+	if _sensor != null:
+		_sensor.set_deferred("monitoring", false)
 	_fly_vel = vel
 	_ttl = 0.7

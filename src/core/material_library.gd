@@ -39,7 +39,7 @@ static func _load_cached_font() -> Font:
 
 static func _new_base_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mat.texture_repeat = true
 	return mat
 
@@ -53,12 +53,33 @@ static func high_friction_physics(friction_val: float = 0.88, bounce_val: float 
 
 static func make_beechwood_material(tint: Color = Color.WHITE) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	mat.albedo_color = tint
+	var honey := Color(0.66, 0.52, 0.36, 1.0)
+	mat.albedo_color = Color(
+		tint.r * honey.r,
+		tint.g * honey.g,
+		tint.b * honey.b,
+		tint.a
+	)
 	mat.albedo_texture = _load_cached_texture(TEX_TRACK_BEECHWOOD)
 	mat.metallic = 0.0
-	mat.roughness = 0.58
+	mat.metallic_specular = 0.14
+	mat.roughness = 0.68
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3(0.22, 0.22, 0.22)
+	mat.uv1_triplanar_sharpness = 4.0
+	return mat
+
+
+static func make_workbench_material(tint: Color = Color(0.46, 0.36, 0.26)) -> StandardMaterial3D:
+	var mat := _new_base_material()
+	mat.albedo_color = Color(tint.r * 0.72, tint.g * 0.70, tint.b * 0.68, tint.a)
+	mat.albedo_texture = _load_cached_texture(TEX_TRACK_BEECHWOOD)
+	mat.metallic = 0.0
+	mat.metallic_specular = 0.10
+	mat.roughness = 0.80
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3(0.18, 0.18, 0.18)
 	mat.uv1_triplanar_sharpness = 4.0
 	return mat
 
@@ -82,13 +103,15 @@ static func make_wood_crate_material(is_heavy: bool) -> StandardMaterial3D:
 	# Godot 4 BoxMesh packs 6 faces in a 3x2 UV grid; scaling UV1 by (3, 2, 1) frames each cube face cleanly.
 	mat.uv1_scale = Vector3(3.0, 2.0, 1.0)
 	if is_heavy:
-		mat.albedo_color = Color(0.68, 0.50, 0.36)
+		mat.albedo_color = Color(0.56, 0.38, 0.24)
 		mat.metallic = 0.06
-		mat.roughness = 0.56
+		mat.metallic_specular = 0.18
+		mat.roughness = 0.58
 	else:
-		mat.albedo_color = Color(1.0, 0.97, 0.92)
+		mat.albedo_color = Color(0.92, 0.82, 0.68)
 		mat.metallic = 0.0
-		mat.roughness = 0.62
+		mat.metallic_specular = 0.16
+		mat.roughness = 0.66
 	return mat
 
 
@@ -116,13 +139,17 @@ static func make_cast_iron_material(tint: Color = Color(0.28, 0.30, 0.35)) -> St
 
 static func make_tungsten_ball_material() -> StandardMaterial3D:
 	var mat := _new_base_material()
-	mat.albedo_color = Color(0.78, 0.83, 0.90)
-	mat.metallic = 0.84
-	mat.roughness = 0.16
+	mat.albedo_texture = _load_cached_texture(TEX_METAL_CAST_IRON)
+	mat.albedo_color = Color(0.52, 0.58, 0.68)
+	mat.metallic = 0.78
+	mat.roughness = 0.20
 	mat.metallic_specular = 0.88
+	mat.uv1_triplanar = true
+	mat.uv1_scale = Vector3(1.2, 1.2, 1.2)
+	mat.uv1_triplanar_sharpness = 4.0
 	mat.emission_enabled = true
-	mat.emission = Color(0.10, 0.14, 0.20)
-	mat.emission_energy_multiplier = 0.22
+	mat.emission = Color(0.08, 0.12, 0.18)
+	mat.emission_energy_multiplier = 0.16
 	return mat
 
 
@@ -177,6 +204,13 @@ static func make_jelly_core_material(color: Color) -> StandardMaterial3D:
 	return mat
 
 
+static func _remove_existing_child(target: Node, child_name: String) -> void:
+	var existing := target.get_node_or_null(NodePath(child_name))
+	if existing != null:
+		target.remove_child(existing)
+		existing.free()
+
+
 static func attach_weight_labels(
 	target: Node3D,
 	weight_text: String,
@@ -186,6 +220,8 @@ static func attach_weight_labels(
 	if target == null:
 		return
 	target.set_meta("weight_label", weight_text)
+	_remove_existing_child(target, "WeightLabelFront")
+	_remove_existing_child(target, "WeightLabelTop")
 	if _is_headless():
 		return
 
@@ -232,6 +268,7 @@ static func attach_anchored_flange_base(
 	if target == null:
 		return
 	target.set_meta("is_anchored_fixed", true)
+	_remove_existing_child(target, "AnchoredFlangeBase")
 	if _is_headless():
 		return
 
@@ -291,13 +328,13 @@ static func attach_anchored_flange_base(
 			"FIXED",
 			_load_cached_font(),
 			Color(1.0, 0.86, 0.28),
-			clampf(half_x * 0.0044, 0.0024, 0.0048),
-			36,
-			10
+			clampf(half_x * 0.0058, 0.0036, 0.0058),
+			42,
+			11
 		)
 		fixed_lbl.name = "FixedRimLabel"
-		fixed_lbl.position = Vector3(0.0, local_y + 0.14, half_z + 0.11)
-		fixed_lbl.rotation_degrees = Vector3(-22.0, 0.0, 0.0)
+		fixed_lbl.position = Vector3(0.0, local_y + 0.18, half_z + 0.16)
+		fixed_lbl.rotation_degrees = Vector3(-32.0, 0.0, 0.0)
 		root.add_child(fixed_lbl)
 
 	target.add_child(root)
