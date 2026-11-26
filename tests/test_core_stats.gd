@@ -8,6 +8,7 @@ func run() -> void:
 	_test_deterministic_seed_parsing_and_subseeds()
 	_test_upgrade_catalog_persistent_impact_copy()
 	_test_material_library_metadata_and_friction()
+	_test_clay_mesh_builder_shapes_and_caching()
 
 
 func _test_stat_sheet_defaults_and_clamping() -> void:
@@ -254,3 +255,58 @@ func _test_material_library_metadata_and_friction() -> void:
 
 	dummy.free()
 	fixed_dummy.free()
+
+
+func _test_clay_mesh_builder_shapes_and_caching() -> void:
+	var builder: GDScript = load("res://src/core/clay_mesh_builder.gd")
+	assert_true(builder != null, "ClayMeshBuilder script must exist")
+	if builder == null:
+		return
+
+	if DisplayServer.get_name() == "headless":
+		assert_true(builder.make_rounded_box(Vector3.ONE, 0.14, 3, false) == null, "Headless default skips GPU mesh")
+
+	var ref_bm := BoxMesh.new()
+	var ref_arr := ref_bm.get_mesh_arrays()
+	var rv: PackedVector3Array = ref_arr[Mesh.ARRAY_VERTEX]
+	var rn: PackedVector3Array = ref_arr[Mesh.ARRAY_NORMAL]
+	var ri: PackedInt32Array = ref_arr[Mesh.ARRAY_INDEX]
+	var expected_wind_sign := signf((rv[ri[1]] - rv[ri[0]]).cross(rv[ri[2]] - rv[ri[0]]).dot(rn[ri[0]]))
+
+	var rbox: ArrayMesh = builder.make_rounded_box(Vector3(1.2, 1.0, 2.0), 0.16, 3, true)
+	var rbox_cached: ArrayMesh = builder.make_rounded_box(Vector3(1.2, 1.0, 2.0), 0.16, 3, true)
+	assert_true(rbox != null and rbox.get_surface_count() == 1, "RoundedBox builds 1-surface ArrayMesh")
+	assert_eq(rbox, rbox_cached, "RoundedBox reuses cached ArrayMesh instance for identical dimensions")
+
+	var rb_arr := rbox.surface_get_arrays(0)
+	var verts: PackedVector3Array = rb_arr[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = rb_arr[Mesh.ARRAY_NORMAL]
+	var uvs: PackedVector2Array = rb_arr[Mesh.ARRAY_TEX_UV]
+	var idxs: PackedInt32Array = rb_arr[Mesh.ARRAY_INDEX]
+	assert_gt(verts.size(), 60.0, "RoundedBox has subdivided bevel vertices")
+	assert_eq(verts.size(), norms.size(), "RoundedBox normal count matches vertex count")
+	assert_eq(verts.size(), uvs.size(), "RoundedBox UV count matches vertex count")
+
+	var aabb := rbox.get_aabb()
+	assert_approx(aabb.size.x, 1.2, 0.02, "RoundedBox AABB width matches requested X")
+	assert_approx(aabb.size.y, 1.0, 0.02, "RoundedBox AABB height matches requested Y")
+	assert_approx(aabb.size.z, 2.0, 0.02, "RoundedBox AABB depth matches requested Z")
+
+	var tri_wind_sign := signf((verts[idxs[1]] - verts[idxs[0]]).cross(verts[idxs[2]] - verts[idxs[0]]).dot(norms[idxs[0]]))
+	assert_eq(tri_wind_sign, expected_wind_sign, "RoundedBox triangle winding matches Godot BoxMesh front-face convention")
+
+	var ccyl: ArrayMesh = builder.make_chamfered_cylinder(0.5, 0.5, 1.2, 0.10, 24, true)
+	assert_true(ccyl != null and ccyl.get_surface_count() == 1, "ChamferedCylinder builds valid ArrayMesh")
+	assert_approx(ccyl.get_aabb().size.y, 1.2, 0.02, "ChamferedCylinder height matches 1.2m")
+
+	var pebble: ArrayMesh = builder.make_pebble_pad(Vector2(4.0, 6.0), 0.12, 20, true)
+	assert_true(pebble != null and pebble.get_surface_count() == 1, "PebblePad builds valid ArrayMesh")
+	assert_approx(pebble.get_aabb().size.x, 4.0, 0.05, "PebblePad X span matches 4.0m")
+	assert_approx(pebble.get_aabb().size.z, 6.0, 0.05, "PebblePad Z span matches 6.0m")
+
+	var host := Node3D.new()
+	var eyes_root: Node3D = builder.attach_clay_eyes(host, Vector3(0.0, 0.2, 0.5), 0.24, 0.065, true, true)
+	assert_true(eyes_root != null and host.get_node_or_null("ClayEyes") != null, "attach_clay_eyes mounts ClayEyes child node")
+	assert_true(eyes_root.get_child_count() >= 4, "ClayEyes includes left/right pupils, highlights, and blush")
+	host.free()
+
