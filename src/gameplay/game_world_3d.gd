@@ -18,7 +18,6 @@ var current_draft_choices: Array[UpgradeDefinition] = []
 var override_tilt_input: Variant = null
 
 var _vfx_rings: Array[Dictionary] = []
-var _workbench_backdrop: MeshInstance3D = null
 
 
 func _ready() -> void:
@@ -32,28 +31,44 @@ func _setup_lighting_and_sky() -> void:
 	var is_headless := DisplayServer.get_name() == "headless"
 	var env := Environment.new()
 	if not is_headless:
-		var sky_mat := ProceduralSkyMaterial.new()
-		sky_mat.sky_top_color = Color(0.58, 0.76, 0.95)
-		sky_mat.sky_horizon_color = Color(0.92, 0.90, 0.85)
-		sky_mat.ground_horizon_color = Color(0.76, 0.68, 0.58)
-		sky_mat.ground_bottom_color = Color(0.52, 0.42, 0.32)
 		var sky := Sky.new()
-		sky.sky_material = sky_mat
+		var sky_tex := MaterialLibrary.load_storybook_sky_texture()
+		if sky_tex != null:
+			var pano_mat := PanoramaSkyMaterial.new()
+			pano_mat.panorama = sky_tex
+			pano_mat.energy_multiplier = 1.02
+			sky.sky_material = pano_mat
+		else:
+			var sky_mat := ProceduralSkyMaterial.new()
+			sky_mat.sky_top_color = Color(0.55, 0.77, 0.91)
+			sky_mat.sky_horizon_color = Color(0.99, 0.94, 0.86)
+			sky_mat.ground_horizon_color = Color(0.95, 0.87, 0.77)
+			sky_mat.ground_bottom_color = Color(0.86, 0.76, 0.65)
+			sky.sky_material = sky_mat
 		env.background_mode = Environment.BG_SKY
 		env.sky = sky
 	else:
 		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.85, 0.88, 0.92)
+		env.background_color = Color(0.95, 0.91, 0.85)
 
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.96
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.86, 0.82, 0.76)
-	env.ambient_light_energy = 0.44
+	env.tonemap_exposure = 0.98
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_sky_contribution = 0.65
+	env.ambient_light_color = Color(0.97, 0.92, 0.85)
+	env.ambient_light_energy = 0.64
+
+	# Warm cream storybook atmospheric depth fog to gently fade distant clutter
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.97, 0.92, 0.85)
+	env.fog_light_energy = 1.0
+	env.fog_density = 0.0042
+	env.fog_sky_affect = 0.16
+
 	env.glow_enabled = true
-	env.glow_hdr_threshold = 1.25
-	env.glow_intensity = 0.22
-	env.glow_bloom = 0.05
+	env.glow_hdr_threshold = 1.35
+	env.glow_intensity = 0.16
+	env.glow_bloom = 0.04
 
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
@@ -62,59 +77,21 @@ func _setup_lighting_and_sky() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.name = "MainSunLight"
-	sun.rotation_degrees = Vector3(-52.0, -28.0, 0.0)
-	sun.light_color = Color(1.0, 0.96, 0.89)
-	sun.light_energy = 1.05
+	sun.rotation_degrees = Vector3(-50.0, -26.0, 0.0)
+	sun.light_color = Color(1.0, 0.95, 0.87)
+	sun.light_energy = 0.96
+	sun.shadow_opacity = 0.66
 	sun.directional_shadow_max_distance = 85.0
 	sun.shadow_enabled = not is_headless
 	add_child(sun)
 
 	var fill := DirectionalLight3D.new()
 	fill.name = "SkyFillLight"
-	fill.rotation_degrees = Vector3(-35.0, 145.0, 0.0)
-	fill.light_color = Color(0.80, 0.88, 1.0)
-	fill.light_energy = 0.20
+	fill.rotation_degrees = Vector3(-34.0, 148.0, 0.0)
+	fill.light_color = Color(0.90, 0.93, 1.0)
+	fill.light_energy = 0.34
 	fill.shadow_enabled = false
 	add_child(fill)
-
-	if not is_headless:
-		_workbench_backdrop = MeshInstance3D.new()
-		_workbench_backdrop.name = "WorkbenchBackdrop"
-		var wb_box := BoxMesh.new()
-		wb_box.size = Vector3(260.0, 1.0, 360.0)
-		wb_box.material = MaterialLibrary.make_workbench_material(Color(0.46, 0.36, 0.26))
-		_workbench_backdrop.mesh = wb_box
-		_workbench_backdrop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_workbench_backdrop.rotation_degrees = Vector3(TrackGenerator3D.TRACK_SLOPE_PITCH_DEG, 0.0, 0.0)
-		_workbench_backdrop.position = Vector3(0.0, -14.0, -120.0)
-
-		var slat_mat := StandardMaterial3D.new()
-		slat_mat.albedo_color = Color(0.24, 0.18, 0.12)
-		slat_mat.roughness = 0.84
-		slat_mat.metallic_specular = 0.10
-		var slat_mesh_z := BoxMesh.new()
-		slat_mesh_z.size = Vector3(0.16, 0.03, 360.0)
-		slat_mesh_z.material = slat_mat
-		for x_idx in range(-9, 10):
-			if abs(x_idx) <= 1:
-				continue
-			var seam := MeshInstance3D.new()
-			seam.mesh = slat_mesh_z
-			seam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			seam.position = Vector3(float(x_idx) * 8.5, 0.515, 0.0)
-			_workbench_backdrop.add_child(seam)
-
-		var slat_mesh_x := BoxMesh.new()
-		slat_mesh_x.size = Vector3(260.0, 0.025, 0.16)
-		slat_mesh_x.material = slat_mat
-		for z_idx in range(-8, 9):
-			var cross_seam := MeshInstance3D.new()
-			cross_seam.mesh = slat_mesh_x
-			cross_seam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			cross_seam.position = Vector3(0.0, 0.512, float(z_idx) * 18.0)
-			_workbench_backdrop.add_child(cross_seam)
-
-		add_child(_workbench_backdrop)
 
 
 func _setup_world_nodes() -> void:
@@ -194,16 +171,6 @@ func _set_world_simulation_active(active: bool) -> void:
 		PhysicsServer3D.space_set_active(get_world_3d().space, active)
 
 
-func _sync_workbench_backdrop() -> void:
-	if _workbench_backdrop == null or track_generator == null:
-		return
-	var ref_world := chase_camera.global_position if chase_camera != null else player_ball.global_position
-	var cam_local := track_generator.world_to_track_local(ref_world)
-	_workbench_backdrop.global_position = track_generator.track_local_to_world(
-		Vector3(0.0, -14.5, cam_local.z - 110.0)
-	)
-
-
 func _start_level(level: int) -> void:
 	_set_world_simulation_active(true)
 	run_state.begin_level(level)
@@ -218,7 +185,6 @@ func _start_level(level: int) -> void:
 	var start_pos := track_generator.track_local_to_world(Vector3(0.0, player_ball.current_radius + 0.15, -1.5))
 	player_ball.reset_for_track(start_pos)
 	chase_camera.snap_to_target(start_pos)
-	_sync_workbench_backdrop()
 
 	thrust_controller.apply_vertical_gravity_to_space(get_world_3d().space)
 
@@ -232,7 +198,6 @@ func _physics_process(delta: float) -> void:
 	_update_vfx_rings(delta)
 	if game_state == "RACING":
 		simulate_race_step(delta)
-	_sync_workbench_backdrop()
 
 
 func simulate_race_step(delta: float) -> void:
@@ -437,19 +402,20 @@ func _spawn_vfx_ring(origin: Vector3, max_radius: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	var ring := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 1.0
-	cyl.bottom_radius = 1.0
-	cyl.height = 0.12
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.84
+	torus.outer_radius = 1.02
+	torus.rings = 28
+	torus.ring_segments = 14
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 0.72, 0.25, 0.75)
+	mat.albedo_color = Color(0.99, 0.82, 0.52, 0.72)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.58, 0.15)
-	mat.emission_energy_multiplier = 1.6
-	cyl.material = mat
-	ring.mesh = cyl
-	ring.position = origin + Vector3(0.0, 0.15, 0.0)
+	mat.emission = Color(0.98, 0.72, 0.36)
+	mat.emission_energy_multiplier = 0.75
+	torus.material = mat
+	ring.mesh = torus
+	ring.position = origin + Vector3(0.0, 0.18, 0.0)
 	ring.scale = Vector3(0.2, 1.0, 0.2)
 	add_child(ring)
 	_vfx_rings.append({"node": ring, "elapsed": 0.0, "max_r": max_radius})
@@ -464,9 +430,9 @@ func _update_vfx_rings(delta: float) -> void:
 			continue
 		var elapsed := float(item["elapsed"]) + delta
 		item["elapsed"] = elapsed
-		var t := clampf(elapsed / 0.26, 0.0, 1.0)
+		var t := clampf(elapsed / 0.28, 0.0, 1.0)
 		var r := lerpf(0.3, float(item["max_r"]), t)
-		node.scale = Vector3(r, 1.0 - t * 0.7, r)
+		node.scale = Vector3(r, 1.0 - t * 0.65, r)
 		if t >= 1.0:
 			node.queue_free()
 			_vfx_rings.remove_at(i)
@@ -495,7 +461,7 @@ func _refresh_hud() -> void:
 func _format_build_summary() -> String:
 	var active := synergy_bus.get_active_upgrades()
 	if active.is_empty():
-		return "当前构筑：初始钨钢球（冲过终点三选一强化）"
+		return "当前构筑：初始陶瓷球（冲过终点三选一强化）"
 	var parts: Array[String] = []
 	for def in active:
 		var cnt := synergy_bus.get_upgrade_count(def.id)

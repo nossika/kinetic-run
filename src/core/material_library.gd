@@ -29,6 +29,10 @@ static func _load_cached_texture(res_path: String) -> Texture2D:
 	return tex
 
 
+static func load_storybook_sky_texture() -> Texture2D:
+	return _load_cached_texture(TEX_STORYBOOK_SKY_CLOUDS)
+
+
 static func _load_cached_font() -> Font:
 	if _is_headless():
 		return null
@@ -42,6 +46,10 @@ static func _new_base_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mat.texture_repeat = true
+	mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+	mat.rim_enabled = true
+	mat.rim = 0.22
+	mat.rim_tint = 0.38
 	return mat
 
 
@@ -54,103 +62,103 @@ static func high_friction_physics(friction_val: float = 0.88, bounce_val: float 
 
 static func make_beechwood_material(tint: Color = Color.WHITE) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	var honey := Color(0.66, 0.52, 0.36, 1.0)
+	var warm_cream_maple := Color(0.97, 0.92, 0.85, 1.0)
 	mat.albedo_color = Color(
-		tint.r * honey.r,
-		tint.g * honey.g,
-		tint.b * honey.b,
+		tint.r * warm_cream_maple.r,
+		tint.g * warm_cream_maple.g,
+		tint.b * warm_cream_maple.b,
 		tint.a
 	)
 	mat.albedo_texture = _load_cached_texture(TEX_TRACK_BEECHWOOD)
 	mat.metallic = 0.0
-	mat.metallic_specular = 0.14
-	mat.roughness = 0.68
+	mat.metallic_specular = 0.10
+	mat.roughness = 0.78
 	mat.uv1_triplanar = true
-	mat.uv1_scale = Vector3(0.22, 0.22, 0.22)
-	mat.uv1_triplanar_sharpness = 4.0
+	mat.uv1_scale = Vector3(0.18, 0.18, 0.18)
+	mat.uv1_triplanar_sharpness = 3.2
 	return mat
 
 
-static func make_workbench_material(tint: Color = Color(0.46, 0.36, 0.26)) -> StandardMaterial3D:
+static func make_workbench_material(tint: Color = Color(0.88, 0.80, 0.70)) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	mat.albedo_color = Color(tint.r * 0.72, tint.g * 0.70, tint.b * 0.68, tint.a)
+	mat.albedo_color = tint
 	mat.albedo_texture = _load_cached_texture(TEX_TRACK_BEECHWOOD)
 	mat.metallic = 0.0
-	mat.metallic_specular = 0.10
-	mat.roughness = 0.80
+	mat.metallic_specular = 0.08
+	mat.roughness = 0.84
 	mat.uv1_triplanar = true
 	mat.uv1_world_triplanar = true
-	mat.uv1_scale = Vector3(0.18, 0.18, 0.18)
-	mat.uv1_triplanar_sharpness = 4.0
+	mat.uv1_scale = Vector3(0.16, 0.16, 0.16)
+	mat.uv1_triplanar_sharpness = 3.0
 	return mat
 
 
 static func make_frosted_acrylic_material(tint: Color) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var alpha := tint.a if tint.a < 0.99 else 0.72
-	mat.albedo_color = Color(tint.r, tint.g, tint.b, alpha)
-	mat.metallic = 0.08
-	mat.roughness = 0.24
+	var alpha := clampf(tint.a if tint.a < 0.99 else 0.76, 0.18, 0.90)
+	var soft_pastel := tint.lerp(Color(0.99, 0.96, 0.91), 0.24)
+	mat.albedo_color = Color(soft_pastel.r, soft_pastel.g, soft_pastel.b, alpha)
+	mat.metallic = 0.04
+	mat.roughness = 0.36
 	mat.emission_enabled = true
-	mat.emission = Color(tint.r, tint.g, tint.b) * 0.35
-	mat.emission_energy_multiplier = 0.55
+	mat.emission = Color(soft_pastel.r, soft_pastel.g, soft_pastel.b) * 0.24
+	mat.emission_energy_multiplier = 0.32
 	return mat
 
 
 static func make_wood_crate_material(is_heavy: bool) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_texture = _load_cached_texture(TEX_CRATE_BALSA_WOOD)
-	# Godot 4 BoxMesh packs 6 faces in a 3x2 UV grid; scaling UV1 by (3, 2, 1) frames each cube face cleanly.
+	# 6 faces packed in a 3x2 UV grid; scaling UV1 by (3, 2, 1) frames each rounded cube face cleanly.
 	mat.uv1_scale = Vector3(3.0, 2.0, 1.0)
 	if is_heavy:
-		mat.albedo_color = Color(0.56, 0.38, 0.24)
-		mat.metallic = 0.06
-		mat.metallic_specular = 0.18
-		mat.roughness = 0.58
+		mat.albedo_color = Color(0.68, 0.50, 0.36)
+		mat.metallic = 0.04
+		mat.metallic_specular = 0.14
+		mat.roughness = 0.68
 	else:
-		mat.albedo_color = Color(0.92, 0.82, 0.68)
+		mat.albedo_color = Color(0.99, 0.94, 0.85)
 		mat.metallic = 0.0
-		mat.metallic_specular = 0.16
-		mat.roughness = 0.66
+		mat.metallic_specular = 0.12
+		mat.roughness = 0.74
 	return mat
 
 
-static func make_cast_iron_material(tint: Color = Color(0.28, 0.30, 0.35)) -> StandardMaterial3D:
+static func make_cast_iron_material(tint: Color = Color(0.36, 0.38, 0.44)) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	var tex := _load_cached_texture(TEX_METAL_CAST_IRON)
 	mat.albedo_texture = tex
 	if tex != null:
-		# metal_cast_iron.png already carries dark ~0.20 charcoal value; preserve tint hue without crushing hammered detail.
 		mat.albedo_color = Color(
-			clampf(tint.r * 2.8, 0.45, 1.25),
-			clampf(tint.g * 2.8, 0.45, 1.25),
-			clampf(tint.b * 2.8, 0.45, 1.25),
+			clampf(tint.r * 2.1, 0.56, 1.20),
+			clampf(tint.g * 2.1, 0.56, 1.20),
+			clampf(tint.b * 2.1, 0.56, 1.20),
 			tint.a
 		)
 	else:
 		mat.albedo_color = tint
-	mat.metallic = 0.76
-	mat.roughness = 0.34
+	mat.metallic = 0.70
+	mat.roughness = 0.44
 	mat.uv1_triplanar = true
-	mat.uv1_scale = Vector3(0.65, 0.65, 0.65)
-	mat.uv1_triplanar_sharpness = 4.0
+	mat.uv1_scale = Vector3(0.55, 0.55, 0.55)
+	mat.uv1_triplanar_sharpness = 3.2
 	return mat
 
 
 static func make_tungsten_ball_material() -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_texture = _load_cached_texture(TEX_METAL_CAST_IRON)
-	mat.albedo_color = Color(0.52, 0.58, 0.68)
+	mat.albedo_color = Color(0.84, 0.90, 0.98)
 	mat.metallic = 0.78
 	mat.roughness = 0.20
-	mat.metallic_specular = 0.88
+	mat.metallic_specular = 0.72
 	mat.uv1_triplanar = true
-	mat.uv1_scale = Vector3(1.2, 1.2, 1.2)
-	mat.uv1_triplanar_sharpness = 4.0
+	mat.uv1_scale = Vector3(0.9, 0.9, 0.9)
+	mat.uv1_triplanar_sharpness = 3.2
 	mat.emission_enabled = true
-	mat.emission = Color(0.08, 0.12, 0.18)
-	mat.emission_energy_multiplier = 0.16
+	mat.emission = Color(0.16, 0.20, 0.26)
+	mat.emission_energy_multiplier = 0.14
 	return mat
 
 
@@ -158,72 +166,69 @@ static func make_retro_barrel_material() -> StandardMaterial3D:
 	var mat := _new_base_material()
 	var tex := _load_cached_texture(TEX_BARREL_RETRO_HAZARD)
 	mat.albedo_texture = tex
-	mat.albedo_color = Color.WHITE if tex != null else Color(0.92, 0.28, 0.18)
-	# Godot 4 CylinderMesh maps side wall V in [0..0.5]; scaling V by 2 wraps full red-cream-red hazard band along barrel height.
+	mat.albedo_color = Color(0.99, 0.97, 0.94) if tex != null else Color(0.93, 0.46, 0.38)
 	mat.uv1_scale = Vector3(1.0, 2.0, 1.0)
-	mat.metallic = 0.32
-	mat.roughness = 0.36
+	mat.metallic = 0.10
+	mat.roughness = 0.52
 	return mat
 
 
 static func make_charred_husk_material() -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_texture = _load_cached_texture(TEX_METAL_CAST_IRON)
-	mat.albedo_color = Color(0.22, 0.20, 0.19)
-	mat.metallic = 0.28
-	mat.roughness = 0.84
-	mat.metallic_specular = 0.14
+	mat.albedo_color = Color(0.28, 0.25, 0.24)
+	mat.metallic = 0.18
+	mat.roughness = 0.86
+	mat.metallic_specular = 0.12
 	mat.uv1_triplanar = true
-	mat.uv1_scale = Vector3(0.85, 0.85, 0.85)
-	mat.uv1_triplanar_sharpness = 4.0
+	mat.uv1_scale = Vector3(0.75, 0.75, 0.75)
+	mat.uv1_triplanar_sharpness = 3.2
 	return mat
 
 
-static func make_pin_stripe_material(color: Color = Color(0.92, 0.28, 0.18)) -> StandardMaterial3D:
+static func make_pin_stripe_material(color: Color = Color(0.92, 0.44, 0.38)) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_color = color
-	mat.metallic = 0.06
-	mat.roughness = 0.24
-	mat.metallic_specular = 0.62
+	mat.metallic = 0.04
+	mat.roughness = 0.28
+	mat.metallic_specular = 0.46
 	return mat
 
 
 static func make_silicone_soft_material(color: Color) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	mat.albedo_color = color
+	var warm_clay := color.lerp(Color(0.99, 0.96, 0.91), 0.16)
+	mat.albedo_color = Color(warm_clay.r, warm_clay.g, warm_clay.b, color.a)
 	mat.metallic = 0.0
-	mat.roughness = 0.86
-	mat.metallic_specular = 0.25
+	mat.roughness = 0.88
+	mat.metallic_specular = 0.18
 	return mat
 
 
 static func make_jelly_outer_material(color: Color) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var alpha := color.a if color.a < 0.99 else 0.58
+	var alpha := color.a if color.a < 0.99 else 0.62
 	var tex := _load_cached_texture(TEX_JELLY_BUBBLE_SOFT)
 	mat.albedo_texture = tex
-	if tex != null:
-		var lifted := color.lerp(Color.WHITE, 0.25)
-		mat.albedo_color = Color(lifted.r, lifted.g, lifted.b, alpha)
-	else:
-		mat.albedo_color = Color(color.r, color.g, color.b, alpha)
+	var soft_jelly := color.lerp(Color(0.99, 0.98, 0.94), 0.26)
+	mat.albedo_color = Color(soft_jelly.r, soft_jelly.g, soft_jelly.b, alpha)
 	mat.metallic = 0.0
-	mat.roughness = 0.12
-	mat.metallic_specular = 0.85
-	mat.uv1_scale = Vector3(1.4, 1.4, 1.4)
+	mat.roughness = 0.14
+	mat.metallic_specular = 0.72
+	mat.uv1_scale = Vector3(1.2, 1.2, 1.2)
 	return mat
 
 
 static func make_jelly_core_material(color: Color) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	var bright := color.lightened(0.22)
+	var bright := color.lerp(Color(1.0, 0.98, 0.92), 0.32)
 	mat.albedo_color = Color(bright.r, bright.g, bright.b, 1.0)
 	mat.metallic = 0.0
-	mat.roughness = 0.28
+	mat.roughness = 0.34
 	mat.emission_enabled = true
-	mat.emission = Color(color.r, color.g, color.b)
-	mat.emission_energy_multiplier = 0.45
+	mat.emission = Color(bright.r, bright.g, bright.b)
+	mat.emission_energy_multiplier = 0.32
 	return mat
 
 
@@ -238,7 +243,7 @@ static func attach_weight_labels(
 	target: Node3D,
 	weight_text: String,
 	box_size: Vector3,
-	text_color: Color = Color(0.98, 0.96, 0.90)
+	text_color: Color = Color(0.98, 0.95, 0.88)
 ) -> void:
 	if target == null:
 		return
@@ -249,36 +254,29 @@ static func attach_weight_labels(
 		return
 
 	var font := _load_cached_font()
-	var char_factor := clampf(4.5 / maxf(3.0, float(weight_text.length())), 0.65, 1.15)
+	var char_factor := clampf(4.5 / maxf(3.0, float(weight_text.length())), 0.65, 1.10)
 
-	# Front (+Z) face stencil facing chase camera
+	# Single-sided subtle wood-carved / clay-stamped front mark (no top duplicate, no black outline)
 	var front_span := minf(maxf(0.35, box_size.x), maxf(0.35, box_size.y))
+	var stamp_color := Color(text_color.r, text_color.g, text_color.b, 0.82)
+	var is_light_ink := text_color.get_luminance() > 0.55
+	var soft_backing := (
+		Color(0.28, 0.20, 0.14, 0.28)
+		if is_light_ink
+		else Color(0.99, 0.95, 0.87, 0.26)
+	)
 	var front_lbl := _build_stencil_label(
 		weight_text,
 		font,
-		text_color,
-		0.0040 * clampf(front_span / 1.1, 0.50, 1.70) * char_factor,
-		48,
-		11
+		stamp_color,
+		soft_backing,
+		0.0032 * clampf(front_span / 1.1, 0.50, 1.50) * char_factor,
+		44,
+		2
 	)
 	front_lbl.name = "WeightLabelFront"
-	front_lbl.position = Vector3(0.0, 0.0, box_size.z * 0.5 + 0.02)
+	front_lbl.position = Vector3(0.0, -box_size.y * 0.14, box_size.z * 0.5 + 0.025)
 	target.add_child(front_lbl)
-
-	# Top (+Y) face stencil readable from elevated chase camera angles
-	var top_span := minf(maxf(0.35, box_size.x), maxf(0.35, box_size.z))
-	var top_lbl := _build_stencil_label(
-		weight_text,
-		font,
-		text_color,
-		0.0040 * clampf(top_span / 1.1, 0.50, 1.70) * char_factor,
-		48,
-		11
-	)
-	top_lbl.name = "WeightLabelTop"
-	top_lbl.position = Vector3(0.0, box_size.y * 0.5 + 0.02, 0.0)
-	top_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	target.add_child(top_lbl)
 
 
 static func attach_anchored_flange_base(
@@ -286,7 +284,7 @@ static func attach_anchored_flange_base(
 	local_y: float,
 	half_x: float,
 	half_z: float,
-	show_fixed_label: bool = true
+	_show_fixed_label: bool = true
 ) -> void:
 	if target == null:
 		return
@@ -298,67 +296,19 @@ static func attach_anchored_flange_base(
 	var root := Node3D.new()
 	root.name = "AnchoredFlangeBase"
 
-	# 1. Wider black-and-yellow hazard border plate at local_y + 0.02
-	var hazard_inst := MeshInstance3D.new()
-	var hazard_box := BoxMesh.new()
-	hazard_box.size = Vector3(half_x * 2.0 + 0.18, 0.04, half_z * 2.0 + 0.18)
-	var hazard_mat := _new_base_material()
-	var hazard_tex := _load_cached_texture(TEX_ANCHOR_HAZARD_STRIPE)
-	hazard_mat.albedo_texture = hazard_tex
-	hazard_mat.albedo_color = Color.WHITE if hazard_tex != null else Color(0.95, 0.78, 0.12)
-	hazard_mat.metallic = 0.15
-	hazard_mat.roughness = 0.55
-	hazard_mat.uv1_triplanar = true
-	hazard_mat.uv1_scale = Vector3(0.85, 0.85, 0.85)
-	hazard_box.material = hazard_mat
-	RenderHelper.attach_mesh(hazard_inst, hazard_box)
-	hazard_inst.position = Vector3(0.0, local_y + 0.02, 0.0)
-	root.add_child(hazard_inst)
-
-	# 2. Dark cast-iron mounting base plate at local_y + 0.04
-	var plate_inst := MeshInstance3D.new()
-	var plate_box := BoxMesh.new()
-	plate_box.size = Vector3(half_x * 2.0, 0.06, half_z * 2.0)
-	plate_box.material = make_cast_iron_material(Color(0.30, 0.32, 0.37))
-	RenderHelper.attach_mesh(plate_inst, plate_box)
-	plate_inst.position = Vector3(0.0, local_y + 0.04, 0.0)
-	root.add_child(plate_inst)
-
-	# 3. Four silver metallic hexagonal bolt heads at (±half_x * 0.88, local_y + 0.08, ±half_z * 0.88)
-	var bolt_radius := clampf(minf(half_x, half_z) * 0.13, 0.055, 0.11)
-	var bolt_mesh := CylinderMesh.new()
-	bolt_mesh.top_radius = bolt_radius
-	bolt_mesh.bottom_radius = bolt_radius
-	bolt_mesh.height = 0.06
-	bolt_mesh.radial_segments = 6
-	bolt_mesh.rings = 1
-	var bolt_mat := _new_base_material()
-	bolt_mat.albedo_color = Color(0.88, 0.91, 0.96)
-	bolt_mat.metallic = 0.84
-	bolt_mat.roughness = 0.22
-	bolt_mesh.material = bolt_mat
-
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var bolt_inst := MeshInstance3D.new()
-			RenderHelper.attach_mesh(bolt_inst, bolt_mesh)
-			bolt_inst.position = Vector3(sx * half_x * 0.88, local_y + 0.08, sz * half_z * 0.88)
-			root.add_child(bolt_inst)
-
-	# 4. Crisp "FIXED" stencil label on the front +Z rim when requested
-	if show_fixed_label:
-		var fixed_lbl := _build_stencil_label(
-			"FIXED",
-			_load_cached_font(),
-			Color(1.0, 0.86, 0.28),
-			clampf(half_x * 0.0058, 0.0036, 0.0058),
-			42,
-			11
-		)
-		fixed_lbl.name = "FixedRimLabel"
-		fixed_lbl.position = Vector3(0.0, local_y + 0.18, half_z + 0.16)
-		fixed_lbl.rotation_degrees = Vector3(-32.0, 0.0, 0.0)
-		root.add_child(fixed_lbl)
+	# Clean single-piece rounded warm biscuit-clay suction pad (replaces hazard stripes, bolts, & FIXED text)
+	var pad_inst := MeshInstance3D.new()
+	var pad_size := Vector3(maxf(0.36, half_x * 1.88), 0.085, maxf(0.36, half_z * 1.88))
+	var pad_mesh := ClayMeshBuilder.make_rounded_box(pad_size, 0.038, 2)
+	var pad_mat := make_silicone_soft_material(Color(0.84, 0.74, 0.63))
+	var trim_tex := _load_cached_texture(TEX_ANCHOR_HAZARD_STRIPE)
+	if trim_tex != null:
+		pad_mat.albedo_texture = trim_tex
+		pad_mat.uv1_triplanar = true
+		pad_mat.uv1_scale = Vector3(0.5, 0.5, 0.5)
+	ClayMeshBuilder.assign_mesh(pad_inst, pad_mesh, pad_mat)
+	pad_inst.position = Vector3(0.0, local_y + 0.038, 0.0)
+	root.add_child(pad_inst)
 
 	target.add_child(root)
 
@@ -367,6 +317,7 @@ static func _build_stencil_label(
 	text_val: String,
 	font: Font,
 	text_color: Color,
+	outline_color: Color,
 	px_size: float,
 	f_size: int,
 	o_size: int
@@ -379,7 +330,7 @@ static func _build_stencil_label(
 	lbl.outline_size = o_size
 	lbl.pixel_size = px_size
 	lbl.modulate = text_color
-	lbl.outline_modulate = Color(0.09, 0.10, 0.13, 0.96)
+	lbl.outline_modulate = outline_color
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.double_sided = false

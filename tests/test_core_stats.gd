@@ -201,6 +201,12 @@ func _test_material_library_metadata_and_friction() -> void:
 	var jelly_core: StandardMaterial3D = lib_script.make_jelly_core_material(Color(0.45, 1.0, 0.55))
 
 	assert_true(beech != null and beech.uv1_triplanar, "Beechwood track material enables world/local triplanar tiling")
+	assert_eq(
+		beech.diffuse_mode,
+		BaseMaterial3D.DIFFUSE_LAMBERT_WRAP,
+		"Storybook materials use soft Half-Lambert wrap diffuse shading"
+	)
+	assert_true(beech.rim_enabled, "Storybook materials enable gentle Fresnel rim softness")
 	assert_true(acrylic != null and acrylic.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA, "Frosted acrylic uses alpha transparency")
 	assert_true(light_crate != null and heavy_crate != null, "Both light and heavy wood crate materials created")
 	assert_true(light_crate.albedo_color != heavy_crate.albedo_color, "Heavy wood crate has distinct darker reinforced tint")

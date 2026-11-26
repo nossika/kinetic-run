@@ -23,6 +23,14 @@ func _test_main_scene_boots_and_rolls_forward() -> void:
 	assert_eq(world.game_state, "RACING", "Game starts in RACING state")
 	assert_eq(world.run_state.current_level, 1, "Starts on Level 1")
 	assert_approx(world.run_state.time_remaining, 30.0, 0.2, "Starts with ~30.0s countdown")
+	assert_true(
+		world.get_node_or_null("WorkbenchBackdrop") == null,
+		"Cluttered gridded WorkbenchBackdrop is removed in storybook environment"
+	)
+	var wenv := world.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	assert_true(wenv != null and wenv.environment != null, "WorldEnvironment configured")
+	if wenv != null and wenv.environment != null:
+		assert_true(wenv.environment.fog_enabled, "Warm storybook depth fog is enabled")
 
 	var z_start: float = world.player_ball.global_position.z
 	for _i in range(25):
