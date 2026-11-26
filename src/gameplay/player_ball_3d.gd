@@ -11,6 +11,9 @@ const RESPAWN_DURATION: float = 1.2
 const STUCK_SPEED_THRESHOLD: float = 0.6
 const STUCK_DURATION: float = 1.8
 const AIRBORNE_MIN_TIME: float = 0.22
+const OBSTACLE_BOUNCE_COOLDOWN: float = 0.18
+const MIN_OBSTACLE_REBOUND_DV: float = 3.2
+const MIN_RAIL_BOUNCE_DV: float = 0.75
 
 var synergy_bus: PhysicsSynergyBus = null
 var track_reference: Node3D = null
@@ -25,7 +28,10 @@ var _stuck_timer: float = 0.0
 var _air_time: float = 0.0
 var _peak_downward_speed: float = 0.0
 var _rail_bounce_cooldown: float = 0.0
+var _obstacle_bounce_cooldown: float = 0.0
 var _saved_velocity_pre_step: Vector3 = Vector3.ZERO
+var _pending_contact_events: Array[Dictionary] = []
+var _last_step_physics_frame: int = -1
 var last_external_boost_origin: Vector3 = Vector3(INF, INF, INF)
 var _is_paused: bool = false
 var _paused_freeze: bool = false
@@ -46,7 +52,7 @@ var _weight_label_3d: Label3D = null
 func _ready() -> void:
 	continuous_cd = true
 	contact_monitor = true
-	max_contacts_reported = 8
+	max_contacts_reported = 16
 	can_sleep = false
 
 	if physics_material_override == null:
@@ -56,8 +62,6 @@ func _ready() -> void:
 		physics_material_override = mat
 
 	_build_nodes_if_needed()
-	if not body_entered.is_connected(_on_body_entered):
-		body_entered.connect(_on_body_entered)
 	sync_from_stats()
 
 
@@ -65,9 +69,24 @@ func _process(_delta: float) -> void:
 	_update_hud_ring_transform()
 
 
+func _physics_process(delta: float) -> void:
+	var cur_frame := Engine.get_physics_frames()
+	if _last_step_physics_frame == cur_frame:
+		_flush_pending_contact_events()
+		return
+	_rail_bounce_cooldown = maxf(0.0, _rail_bounce_cooldown - delta)
+	_obstacle_bounce_cooldown = maxf(0.0, _obstacle_bounce_cooldown - delta)
+	_flush_pending_contact_events()
+	if not is_respawning and not _is_paused:
+		_saved_velocity_pre_step = linear_velocity
+
+
 func setup(p_bus: PhysicsSynergyBus) -> void:
 	synergy_bus = p_bus
 	continuous_cd = true
+	contact_monitor = true
+	max_contacts_reported = 16
+	can_sleep = false
 	if physics_material_override == null:
 		var mat := PhysicsMaterial.new()
 		mat.friction = 0.42
@@ -394,6 +413,9 @@ func reset_for_track(start_pos: Vector3) -> void:
 	_air_time = 0.0
 	_peak_downward_speed = 0.0
 	_rail_bounce_cooldown = 0.0
+	_obstacle_bounce_cooldown = 0.0
+	_pending_contact_events.clear()
+	_last_step_physics_frame = -1
 	last_external_boost_origin = Vector3(INF, INF, INF)
 	freeze = false
 	_set_ball_world_pos(start_pos)
@@ -416,11 +438,210 @@ func get_current_momentum() -> float:
 	return mass * get_pre_step_speed()
 
 
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if is_respawning or _is_paused:
+		return
+	var contact_count := state.get_contact_count()
+	if contact_count <= 0:
+		return
+
+	var ball_origin := state.transform.origin
+	var total_contact_impulse := Vector3.ZERO
+	var by_collider: Dictionary = {}
+
+	for i in range(contact_count):
+		var imp := state.get_contact_impulse(i)
+		total_contact_impulse += imp
+
+		var col_obj := state.get_contact_collider_object(i)
+		if col_obj == null or not is_instance_valid(col_obj) or not (col_obj is Node):
+			continue
+		var col_node := col_obj as Node
+		var c_pos := state.get_contact_local_position(i)
+		var c_norm := state.get_contact_local_normal(i)
+		var to_center := ball_origin - c_pos
+		if to_center.length_squared() > 0.0001 and c_norm.dot(to_center) < 0.0:
+			c_norm = -c_norm
+		elif imp.length_squared() > 0.0001 and c_norm.dot(imp) < 0.0:
+			c_norm = -c_norm
+
+		var cid := col_node.get_instance_id()
+		if not by_collider.has(cid):
+			by_collider[cid] = {
+				"collider": col_node,
+				"pos_sum": c_pos,
+				"norm_sum": c_norm,
+				"impulse": imp,
+				"count": 1,
+			}
+		else:
+			var entry: Dictionary = by_collider[cid]
+			entry["pos_sum"] = (entry["pos_sum"] as Vector3) + c_pos
+			entry["norm_sum"] = (entry["norm_sum"] as Vector3) + c_norm
+			entry["impulse"] = (entry["impulse"] as Vector3) + imp
+			entry["count"] = int(entry["count"]) + 1
+
+	var eff_mass := maxf(0.1, mass)
+	var v_post_raw := state.linear_velocity
+	var v_pre := _saved_velocity_pre_step
+	if total_contact_impulse.length_squared() > 0.0001:
+		v_pre = v_post_raw - (total_contact_impulse / eff_mass) - state.total_gravity * state.step
+	elif v_pre.length_squared() <= 0.0001:
+		v_pre = v_post_raw
+
+	var hit_movable_obstacle := false
+	var hit_undetonated_barrel := false
+
+	for cid in by_collider.keys():
+		var entry: Dictionary = by_collider[cid]
+		var col_node: Node = entry["collider"]
+		if col_node == null or not is_instance_valid(col_node):
+			continue
+		var cnt := float(maxi(1, int(entry["count"])))
+		var contact_pos: Vector3 = (entry["pos_sum"] as Vector3) / cnt
+		var norm_raw: Vector3 = entry["norm_sum"] as Vector3
+		var contact_normal := norm_raw.normalized() if norm_raw.length_squared() > 0.0001 else Vector3.UP
+		var col_impulse: Vector3 = entry["impulse"]
+		var impulse_mag := col_impulse.length()
+		if impulse_mag <= 0.001:
+			impulse_mag = eff_mass * (v_post_raw - v_pre).length()
+
+		if col_node.is_in_group("pinball_bumper") and col_node.has_method("trigger_bumper_bounce"):
+			_pending_contact_events.append({
+				"kind": "pinball_bumper",
+				"collider": col_node,
+				"normal": contact_normal,
+				"pos": contact_pos,
+				"v_pre": v_pre,
+			})
+		elif col_node.is_in_group("track_rail"):
+			var rail_dv := maxf(
+				col_impulse.dot(contact_normal) / eff_mass,
+				(v_post_raw - v_pre).dot(contact_normal)
+			)
+			if rail_dv >= MIN_RAIL_BOUNCE_DV:
+				_pending_contact_events.append({
+					"kind": "track_rail",
+					"collider": col_node,
+					"normal": contact_normal,
+					"pos": contact_pos,
+					"v_pre": v_pre,
+				})
+		elif col_node is ExplosiveBarrel:
+			var barrel := col_node as ExplosiveBarrel
+			if not barrel.is_detonated:
+				hit_undetonated_barrel = true
+				_pending_contact_events.append({
+					"kind": "explosive_barrel",
+					"collider": barrel,
+					"normal": contact_normal,
+					"pos": contact_pos,
+					"v_pre": v_pre,
+				})
+			else:
+				hit_movable_obstacle = true
+		elif col_node.has_method("on_ball_physical_impact"):
+			hit_movable_obstacle = true
+			var dv_from_col := col_impulse.dot(contact_normal) / eff_mass
+			var dv_from_vel := (v_post_raw - v_pre).dot(contact_normal)
+			var normal_rebound_dv := maxf(dv_from_col, dv_from_vel)
+			var v_post_n := v_post_raw.dot(contact_normal)
+			var obs_bounce := 0.0
+			if col_node is RigidBody3D and (col_node as RigidBody3D).physics_material_override != null:
+				obs_bounce = (col_node as RigidBody3D).physics_material_override.bounce
+			var did_rebound := (v_post_n >= -0.25) or (obs_bounce >= 0.75)
+			_pending_contact_events.append({
+				"kind": "movable_obstacle",
+				"collider": col_node,
+				"normal": contact_normal,
+				"pos": contact_pos,
+				"impulse_mag": impulse_mag,
+				"normal_rebound_dv": normal_rebound_dv if did_rebound else 0.0,
+				"v_pre": v_pre,
+			})
+
+	if hit_movable_obstacle and not hit_undetonated_barrel and synergy_bus != null:
+		var loss_mult := synergy_bus.stats.get_stat("smash_speed_loss_mult")
+		if loss_mult < 0.999:
+			var fwd_dir := -get_track_basis().z.normalized()
+			var dv_fwd := v_pre.dot(fwd_dir) - state.linear_velocity.dot(fwd_dir)
+			if dv_fwd > 0.2:
+				var restore_ratio := 1.0 - clampf(loss_mult, 0.0, 1.0)
+				var restored_vel := state.linear_velocity + fwd_dir * (dv_fwd * restore_ratio)
+				var max_spd := v_pre.length()
+				if max_spd > 0.001 and restored_vel.length() > max_spd:
+					restored_vel = restored_vel.normalized() * max_spd
+				state.linear_velocity = restored_vel
+
+
+func _flush_pending_contact_events() -> void:
+	if _pending_contact_events.is_empty():
+		return
+	var events := _pending_contact_events.duplicate()
+	_pending_contact_events.clear()
+
+	if is_respawning or _is_paused:
+		return
+
+	for ev in events:
+		var raw_col: Variant = ev.get("collider", null)
+		if raw_col == null or not is_instance_valid(raw_col):
+			continue
+		var collider := raw_col as Node
+		if collider == null or collider.is_queued_for_deletion():
+			continue
+
+		var kind := str(ev.get("kind", ""))
+		var contact_normal: Vector3 = ev.get("normal", Vector3.UP)
+		var contact_pos: Vector3 = ev.get("pos", _get_ball_world_pos())
+		var v_pre: Vector3 = ev.get("v_pre", _saved_velocity_pre_step)
+
+		match kind:
+			"track_rail":
+				if _rail_bounce_cooldown <= 0.0:
+					_rail_bounce_cooldown = 0.12
+					if v_pre.length() > _saved_velocity_pre_step.length():
+						_saved_velocity_pre_step = v_pre
+					notify_wall_or_bumper_bounce(contact_normal, contact_pos, 0.0)
+			"pinball_bumper":
+				if collider.has_method("trigger_bumper_bounce"):
+					if v_pre.length() > _saved_velocity_pre_step.length():
+						_saved_velocity_pre_step = v_pre
+					collider.call("trigger_bumper_bounce", self, contact_normal)
+			"explosive_barrel":
+				if collider is ExplosiveBarrel:
+					var barrel := collider as ExplosiveBarrel
+					if not barrel.is_detonated:
+						if v_pre.length() > _saved_velocity_pre_step.length():
+							_saved_velocity_pre_step = v_pre
+						barrel.on_ball_contact(self)
+			"movable_obstacle":
+				var impulse_mag := float(ev.get("impulse_mag", 0.0))
+				var normal_rebound_dv := float(ev.get("normal_rebound_dv", 0.0))
+				if collider.has_method("on_ball_physical_impact"):
+					if v_pre.length() > _saved_velocity_pre_step.length():
+						_saved_velocity_pre_step = v_pre
+					var yielded_smash := bool(collider.call("on_ball_physical_impact", impulse_mag))
+					if yielded_smash:
+						if v_pre.length() > _saved_velocity_pre_step.length():
+							_saved_velocity_pre_step = v_pre
+						notify_obstacle_impact(contact_pos, 0)
+				if normal_rebound_dv >= MIN_OBSTACLE_REBOUND_DV and _obstacle_bounce_cooldown <= 0.0:
+					_obstacle_bounce_cooldown = OBSTACLE_BOUNCE_COOLDOWN
+					if v_pre.length() > _saved_velocity_pre_step.length():
+						_saved_velocity_pre_step = v_pre
+					notify_wall_or_bumper_bounce(contact_normal, contact_pos, 0.0)
+
+
 func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> void:
+	_last_step_physics_frame = Engine.get_physics_frames()
 	_rail_bounce_cooldown = maxf(0.0, _rail_bounce_cooldown - delta)
+	_obstacle_bounce_cooldown = maxf(0.0, _obstacle_bounce_cooldown - delta)
+	_flush_pending_contact_events()
 	var track_basis := _get_track_basis()
 
 	if is_respawning:
+		_pending_contact_events.clear()
 		respawn_time_left -= delta
 		if respawn_time_left <= 0.0:
 			is_respawning = false
@@ -545,17 +766,16 @@ func apply_forward_impulse(impulse_ns: float) -> void:
 	_saved_velocity_pre_step = linear_velocity
 
 
-func notify_smash_target(target_pos: Vector3, base_speed_loss_ratio: float, chain_depth: int = 0) -> void:
-	var loss_mult := synergy_bus.stats.get_stat("smash_speed_loss_mult") if synergy_bus != null else 1.0
-	var actual_loss := clampf(base_speed_loss_ratio * loss_mult, 0.0, 0.85)
-	var pre_vel := _saved_velocity_pre_step if _saved_velocity_pre_step.length() > linear_velocity.length() else linear_velocity
-	linear_velocity = pre_vel * (1.0 - actual_loss)
-
+func notify_obstacle_impact(target_pos: Vector3, chain_depth: int = 0) -> void:
 	target_smashed.emit(target_pos)
 	if synergy_bus != null:
 		var ctx := make_event_context(0.0, _get_track_basis().z, target_pos, chain_depth)
 		var actions := synergy_bus.on_smash_target(ctx)
 		_consume_synergy_actions(actions)
+
+
+func notify_smash_target(target_pos: Vector3, _base_speed_loss_ratio: float = 0.0, chain_depth: int = 0) -> void:
+	notify_obstacle_impact(target_pos, chain_depth)
 
 
 func notify_wall_or_bumper_bounce(normal: Vector3, contact_pos: Vector3, bonus_forward_impulse: float = 0.0) -> void:

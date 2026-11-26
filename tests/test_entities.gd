@@ -755,6 +755,39 @@ func _test_sloped_floor_stability_and_flying_debris_barrel_hit() -> void:
 	assert_true(is_instance_valid(ball_contact_barrel), "Ball-detonated ExplosiveBarrel husk persists after 72 frames")
 	if is_instance_valid(ball_contact_barrel):
 		assert_true(ball_contact_barrel.is_detonated, "Real PlayerBall3D contact detonates ExplosiveBarrel")
+		var reexplode_count := {"n": 0}
+		ball_contact_barrel.barrel_exploded.connect(
+			func(_o: Vector3, _r: float, _f: float, _d: int) -> void:
+				reexplode_count["n"] = int(reexplode_count["n"]) + 1
+		)
+		ball_contact_barrel.linear_velocity = Vector3.ZERO
+		var husk_local_pos: Vector3 = ball_contact_barrel.position
+		slope_ball.global_position = sloped_root.to_global(husk_local_pos + Vector3(0.0, 0.0, 1.45))
+		slope_ball.linear_velocity = -sloped_root.global_transform.basis.z.normalized() * 11.0
+		for _f in range(8):
+			await scene_tree.physics_frame
+		assert_eq(int(reexplode_count["n"]), 0, "0.45kg EMPTY barrel husk never re-detonates on subsequent ball contact")
+		assert_lt(slope_ball.linear_velocity.length(), 18.0, "0.45kg EMPTY barrel husk does not grant a second explosion boost")
+
+	# Also verify real Jolt 3D contact with PinballBumper triggers radial kick + bumper bounce synergy
+	var catalog_script: GDScript = load("res://src/upgrades/upgrade_catalog.gd")
+	if catalog_script != null:
+		var catalog = catalog_script.new()
+		slope_ball.synergy_bus.apply_upgrade(catalog.get_upgrade("momentum_overload"))
+		slope_ball.synergy_bus.reset_level_transient()
+		var live_bumper = factory_script.create_pinball_bumper(Vector3(2.8, 0.65, -36.0))
+		sloped_root.add_child(live_bumper)
+		await scene_tree.physics_frame
+		slope_ball.global_position = sloped_root.to_global(Vector3(1.15, 0.55, -36.0))
+		slope_ball.linear_velocity = sloped_root.global_transform.basis.x.normalized() * 9.0 - sloped_root.global_transform.basis.z.normalized() * 6.0
+		for _f in range(8):
+			await scene_tree.physics_frame
+		assert_eq(slope_ball.synergy_bus.combo_stacks, 1, "Real Jolt contact with PinballBumper triggers on_wall_or_bumper_bounce")
+		assert_gt(
+			(-sloped_root.global_transform.basis.z.normalized()).dot(slope_ball.linear_velocity),
+			15.0,
+			"Real Jolt contact with PinballBumper grants forward -Z bumper boost"
+		)
 	assert_true(is_instance_valid(drop_balloon), "Untethered soft_balloon persists after 90 physics frames")
 	assert_true(is_instance_valid(drop_iron), "Untethered 12kg mag_iron persists on sloped floor after 90 physics frames")
 	if is_instance_valid(drop_iron):

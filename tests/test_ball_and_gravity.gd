@@ -5,6 +5,7 @@ func run() -> void:
 	_test_lateral_thrust_controller_instant_start_stop_and_vertical_gravity()
 	await _test_player_ball_stats_thrust_hud_and_sloped_respawn()
 	_test_chase_camera_zero_roll_and_dynamic_fov()
+	await _test_real_collision_mass_ratio_and_tungsten_synergy()
 
 
 func _test_lateral_thrust_controller_instant_start_stop_and_vertical_gravity() -> void:
@@ -207,3 +208,274 @@ func _test_chase_camera_zero_roll_and_dynamic_fov() -> void:
 	assert_lt(absf(cam.rotation_degrees.z), 0.001, "ChaseCamera3D keeps zero roll under full left lateral input")
 
 	cam.free()
+
+
+func _test_real_collision_mass_ratio_and_tungsten_synergy() -> void:
+	var ball_script: GDScript = load("res://src/gameplay/player_ball_3d.gd")
+	var bus_script: GDScript = load("res://src/core/physics_synergy_bus.gd")
+	var catalog_script: GDScript = load("res://src/upgrades/upgrade_catalog.gd")
+	var factory_script: GDScript = load("res://src/track/entities/track_entity_factory.gd")
+	var ctrl_script: GDScript = load("res://src/gameplay/lateral_thrust_controller.gd")
+	var mat_script: GDScript = load("res://src/core/material_library.gd")
+	if ball_script == null or bus_script == null or catalog_script == null or factory_script == null:
+		return
+
+	var root := Node3D.new()
+	scene_tree.root.add_child(root)
+
+	if ctrl_script != null:
+		var ctrl = ctrl_script.new()
+		ctrl.apply_vertical_gravity_to_space(root.get_world_3d().space)
+
+	var floor_body := StaticBody3D.new()
+	if mat_script != null:
+		floor_body.physics_material_override = mat_script.high_friction_physics(0.88, 0.12)
+	var floor_col := CollisionShape3D.new()
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(80.0, 0.6, 80.0)
+	floor_col.shape = floor_box
+	floor_col.position = Vector3(0.0, -0.3, -20.0)
+	floor_body.add_child(floor_col)
+	root.add_child(floor_body)
+
+	var catalog = catalog_script.new()
+
+	# 0. Verify authoritative notify_obstacle_impact method & non-destructive notify_smash_target delegation
+	var probe_bus = bus_script.new()
+	var probe_ball = ball_script.new()
+	root.add_child(probe_ball)
+	probe_ball.setup(probe_bus)
+	probe_ball.global_position = Vector3(-34.0, 0.55, -2.0)
+	assert_true(
+		probe_ball.has_method("notify_obstacle_impact"),
+		"PlayerBall3D exposes notify_obstacle_impact(target_pos, chain_depth)"
+	)
+	probe_ball._saved_velocity_pre_step = Vector3(0.0, 0.0, -24.0)
+	probe_ball.linear_velocity = Vector3(0.0, 0.0, -7.5)
+	probe_ball.notify_smash_target(Vector3.ZERO, 0.5, 0)
+	assert_approx(
+		probe_ball.linear_velocity.z,
+		-7.5,
+		0.01,
+		"notify_smash_target delegates without overwriting linear_velocity"
+	)
+
+	# 1 & 2. Real Jolt 3D head-on collisions across 500g crate, 2kg crate, 20kg weight, and 3.8kg Tungsten+Giant ball
+	var bus_500g = bus_script.new()
+	var ball_500g = ball_script.new()
+	root.add_child(ball_500g)
+	ball_500g.setup(bus_500g)
+	var crate_500g = factory_script.create_crate(Vector3(-12.0, 0.48, -9.68), "light")
+	root.add_child(crate_500g)
+
+	var bus_2kg = bus_script.new()
+	var ball_2kg = ball_script.new()
+	root.add_child(ball_2kg)
+	ball_2kg.setup(bus_2kg)
+	var crate_2kg = factory_script.create_heavy_crate(Vector3(0.0, 0.60, -9.80))
+	root.add_child(crate_2kg)
+
+	var bus_20kg = bus_script.new()
+	var ball_20kg = ball_script.new()
+	root.add_child(ball_20kg)
+	ball_20kg.setup(bus_20kg)
+	var weight_20kg = factory_script.create_shield_brute(Vector3(12.0, 0.70, -9.92))
+	root.add_child(weight_20kg)
+
+	var bus_upg = bus_script.new()
+	bus_upg.apply_upgrade(catalog.get_upgrade("tungsten_core"))
+	bus_upg.apply_upgrade(catalog.get_upgrade("giant_field"))
+	var ball_upg = ball_script.new()
+	root.add_child(ball_upg)
+	ball_upg.setup(bus_upg)
+	var crate_2kg_upg = factory_script.create_heavy_crate(Vector3(24.0, 0.60, -9.80))
+	root.add_child(crate_2kg_upg)
+
+	await scene_tree.physics_frame
+
+	ball_500g.global_position = Vector3(-12.0, 0.55, -8.0)
+	ball_500g.linear_velocity = Vector3(0.0, 0.0, -14.0)
+	ball_500g.angular_velocity = Vector3.ZERO
+
+	ball_2kg.global_position = Vector3(0.0, 0.55, -8.0)
+	ball_2kg.linear_velocity = Vector3(0.0, 0.0, -14.0)
+	ball_2kg.angular_velocity = Vector3.ZERO
+
+	ball_20kg.global_position = Vector3(12.0, 0.55, -8.0)
+	ball_20kg.linear_velocity = Vector3(0.0, 0.0, -14.0)
+	ball_20kg.angular_velocity = Vector3.ZERO
+
+	ball_upg.global_position = Vector3(24.0, ball_upg.current_radius, -9.20 + ball_upg.current_radius + 0.65)
+	ball_upg.linear_velocity = Vector3(0.0, 0.0, -14.0)
+	ball_upg.angular_velocity = Vector3.ZERO
+
+	var peak_rebound_back_20kg := -99.0
+	for _f in range(8):
+		await scene_tree.physics_frame
+		peak_rebound_back_20kg = maxf(peak_rebound_back_20kg, ball_20kg.linear_velocity.z)
+
+	var v_after_500g: float = -ball_500g.linear_velocity.z
+	var v_after_2kg: float = -ball_2kg.linear_velocity.z
+	var v_after_20kg: float = -ball_20kg.linear_velocity.z
+	var v_after_tungsten_2kg: float = -ball_upg.linear_velocity.z
+
+	assert_gt(
+		v_after_500g,
+		v_after_2kg + 2.0,
+		"1.5kg ball post-impact forward speed is strictly higher against 500g crate than 2kg crate"
+	)
+	assert_gt(
+		v_after_2kg,
+		v_after_20kg + 2.0,
+		"1.5kg ball post-impact forward speed is strictly higher against 2kg crate than 20kg weight"
+	)
+	assert_gt(
+		peak_rebound_back_20kg,
+		0.15,
+		"1.5kg ball colliding head-on with 20kg ShieldBrute rebounds backward (+Z > 0)"
+	)
+	assert_lt(
+		v_after_500g,
+		13.0,
+		"Un-upgraded 1.5kg ball uses pure Jolt Newtonian momentum transfer without artificial speed restore"
+	)
+	assert_gt(
+		v_after_tungsten_2kg,
+		v_after_2kg * 1.75,
+		"3.8kg Tungsten Core + Giant Field ball retains dramatically higher forward speed against 2kg crate"
+	)
+	assert_lt(
+		v_after_tungsten_2kg,
+		14.05,
+		"Tungsten Core speed-loss compensation never exceeds pre-impact speed"
+	)
+
+	# 3. Single-yield on_smash_target per persistent obstacle even when bumped twice
+	var bus_smash = bus_script.new()
+	bus_smash.apply_upgrade(catalog.get_upgrade("kinetic_furnace"))
+	bus_smash.apply_upgrade(catalog.get_upgrade("smash_chrono"))
+	bus_smash.apply_upgrade(catalog.get_upgrade("momentum_overload"))
+	var ball_smash = ball_script.new()
+	root.add_child(ball_smash)
+	ball_smash.setup(bus_smash)
+	var repeat_crate = factory_script.create_crate(Vector3(-24.0, 0.48, -9.68), "light")
+	root.add_child(repeat_crate)
+	await scene_tree.physics_frame
+
+	var smash_stats := {"smashed": 0, "waves": 0, "first_wave_force": 0.0}
+	ball_smash.target_smashed.connect(
+		func(_p: Vector3) -> void:
+			smash_stats["smashed"] = int(smash_stats["smashed"]) + 1
+	)
+	ball_smash.synergy_actions_requested.connect(
+		func(act: Dictionary) -> void:
+			var ws: Array = act.get("shockwaves", [])
+			smash_stats["waves"] = int(smash_stats["waves"]) + ws.size()
+			if ws.size() > 0 and float(smash_stats["first_wave_force"]) <= 0.0:
+				smash_stats["first_wave_force"] = float(ws[0]["force"])
+	)
+
+	ball_smash.global_position = Vector3(-24.0, 0.55, -8.0)
+	ball_smash.linear_velocity = Vector3(0.0, 0.0, -15.0)
+	ball_smash.angular_velocity = Vector3.ZERO
+	for _f in range(8):
+		await scene_tree.physics_frame
+
+	assert_eq(int(smash_stats["smashed"]), 1, "First collision with 500g crate emits target_smashed once")
+	assert_eq(int(bus_smash.runtime_counters.get("smash_chrono_hits", 0)), 1, "First collision increments smash_chrono_hits once")
+	assert_eq(int(smash_stats["waves"]), 1, "First collision triggers kinetic_furnace shockwave once")
+	assert_gt(float(smash_stats["first_wave_force"]), 28.0, "kinetic_furnace uses pre-impact kinetic energy sqrt(Ek)")
+	assert_eq(bus_smash.combo_stacks, 1, "Plowing through 500g crate grants 1 smash stack without false wall-bounce stack")
+
+	assert_true(is_instance_valid(repeat_crate), "Hit 500g crate remains persistently in scene")
+	if is_instance_valid(repeat_crate):
+		repeat_crate.linear_velocity = Vector3.ZERO
+		repeat_crate.angular_velocity = Vector3.ZERO
+		var crate_pos_before_second: Vector3 = repeat_crate.global_position
+		ball_smash.global_position = Vector3(crate_pos_before_second.x, 0.55, crate_pos_before_second.z + 1.55)
+		ball_smash.linear_velocity = Vector3(0.0, 0.0, -15.0)
+		ball_smash.angular_velocity = Vector3.ZERO
+		for _f in range(8):
+			await scene_tree.physics_frame
+
+		assert_lt(
+			repeat_crate.global_position.z,
+			crate_pos_before_second.z - 0.5,
+			"Second physical collision still pushes persistent crate along -Z"
+		)
+		assert_eq(int(smash_stats["smashed"]), 1, "Second collision with same persistent crate does NOT emit target_smashed again")
+		assert_eq(int(bus_smash.runtime_counters.get("smash_chrono_hits", 0)), 1, "Second collision does NOT increment smash_chrono_hits again")
+		assert_eq(int(smash_stats["waves"]), 1, "Second collision does NOT trigger kinetic_furnace again")
+
+	# 4. Rebounding off 20kg ShieldBrute and 3kg BouncerSlime triggers on_wall_or_bumper_bounce
+	var bus_refract_brute = bus_script.new()
+	bus_refract_brute.apply_upgrade(catalog.get_upgrade("vector_refractor"))
+	bus_refract_brute.apply_upgrade(catalog.get_upgrade("momentum_overload"))
+	var ball_refract_brute = ball_script.new()
+	root.add_child(ball_refract_brute)
+	ball_refract_brute.setup(bus_refract_brute)
+	var brute_rebound = factory_script.create_shield_brute(Vector3(-12.0, 0.70, -28.0))
+	root.add_child(brute_rebound)
+
+	var bus_refract_slime = bus_script.new()
+	bus_refract_slime.apply_upgrade(catalog.get_upgrade("vector_refractor"))
+	bus_refract_slime.apply_upgrade(catalog.get_upgrade("momentum_overload"))
+	var ball_refract_slime = ball_script.new()
+	root.add_child(ball_refract_slime)
+	ball_refract_slime.setup(bus_refract_slime)
+	var slime_rebound = factory_script.create_bouncer_slime(Vector3(12.0, 0.66, -28.0), 0.0)
+	root.add_child(slime_rebound)
+
+	await scene_tree.physics_frame
+
+	ball_refract_brute.global_position = Vector3(-11.35, 0.55, -26.2)
+	ball_refract_brute.linear_velocity = Vector3(0.0, 0.0, -15.0)
+	ball_refract_brute.angular_velocity = Vector3.ZERO
+
+	ball_refract_slime.global_position = Vector3(12.55, 0.55, -26.1)
+	ball_refract_slime.linear_velocity = Vector3(0.0, 0.0, -15.0)
+	ball_refract_slime.angular_velocity = Vector3.ZERO
+
+	for _f in range(8):
+		await scene_tree.physics_frame
+
+	assert_eq(
+		bus_refract_brute.combo_stacks,
+		2,
+		"Colliding with 20kg ShieldBrute grants smash stack + heavy rebound bounce stack"
+	)
+	assert_lt(
+		ball_refract_brute.linear_velocity.z,
+		-4.0,
+		"Vector Refractor slingshots 20kg ShieldBrute rebound into strong forward -Z velocity"
+	)
+
+	assert_eq(
+		bus_refract_slime.combo_stacks,
+		2,
+		"Bouncing off 3kg BouncerSlime grants smash stack + elastic rebound bounce stack"
+	)
+	assert_lt(
+		ball_refract_slime.linear_velocity.z,
+		-4.0,
+		"Vector Refractor slingshots 3kg BouncerSlime rebound into strong forward -Z velocity"
+	)
+
+	# Second bounce off already-smashed 20kg ShieldBrute after 0.18s cooldown grants bounce stack only
+	for _f in range(14):
+		await scene_tree.physics_frame
+	var brute_pos_now: Vector3 = brute_rebound.global_position
+	ball_refract_brute.global_position = Vector3(brute_pos_now.x + 0.65, 0.55, brute_pos_now.z + 1.8)
+	ball_refract_brute.linear_velocity = Vector3(0.0, 0.0, -15.0)
+	ball_refract_brute.angular_velocity = Vector3.ZERO
+	for _f in range(8):
+		await scene_tree.physics_frame
+
+	assert_eq(
+		bus_refract_brute.combo_stacks,
+		3,
+		"Second rebound off persistent 20kg ShieldBrute adds 1 bounce stack (zero duplicate smash stack)"
+	)
+
+	root.queue_free()
+	await scene_tree.process_frame

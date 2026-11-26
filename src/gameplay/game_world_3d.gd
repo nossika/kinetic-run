@@ -408,9 +408,23 @@ func _on_synergy_actions_requested(actions: Dictionary) -> void:
 
 func _execute_shockwave(origin: Vector3, radius: float, force: float, chain_depth: int) -> void:
 	_spawn_vfx_ring(origin, radius)
-	var snapshot := track_generator.active_entities.duplicate()
-	for ent in snapshot:
-		if ent == null or not is_instance_valid(ent):
+	if track_generator == null:
+		return
+	var entities := track_generator.active_entities
+	for i in range(entities.size() - 1, -1, -1):
+		if not is_instance_valid(entities[i]):
+			entities.remove_at(i)
+	var count := entities.size()
+	var snapshot: Array = []
+	snapshot.resize(count)
+	for i in range(count):
+		snapshot[i] = entities[i]
+	for i in range(count):
+		var raw_ent: Variant = snapshot[i]
+		if raw_ent == null or not is_instance_valid(raw_ent):
+			continue
+		var ent := raw_ent as Node3D
+		if ent == null or ent.is_queued_for_deletion():
 			continue
 		if ent.has_method("apply_shockwave"):
 			ent.apply_shockwave(origin, radius, force, chain_depth, player_ball)
