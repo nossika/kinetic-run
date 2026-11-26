@@ -7,6 +7,7 @@ const TEX_METAL_CAST_IRON: String = "res://assets/textures/metal_cast_iron.png"
 const TEX_ANCHOR_HAZARD_STRIPE: String = "res://assets/textures/anchor_hazard_stripe.png"
 const TEX_BARREL_RETRO_HAZARD: String = "res://assets/textures/barrel_retro_hazard.png"
 const TEX_JELLY_BUBBLE_SOFT: String = "res://assets/textures/jelly_bubble_soft.png"
+const TEX_STORYBOOK_SKY_CLOUDS: String = "res://assets/textures/storybook_sky_clouds.png"
 const BUNDLED_FONT_PATH: String = "res://assets/fonts/game_ui_zh.ttf"
 
 static var _texture_cache: Dictionary = {}
