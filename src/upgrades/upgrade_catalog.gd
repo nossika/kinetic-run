@@ -60,7 +60,7 @@ func _register_initial_12() -> void:
 			"实心钨核",
 			"common",
 			"chassis",
-			"质量 ×1.65，撞碎障碍时的减速损耗降低 50%（直接放大动量 P 与动能 Ek）。"
+			"质量 ×1.65，冲撞障碍时的前向减速损耗降低 50%（直接放大动量 P 与碾压优势）。"
 		)
 		.with_mult("mass", 0.65)
 		.with_mult("smash_speed_loss_mult", -0.50)
@@ -119,7 +119,7 @@ func _register_initial_12() -> void:
 			"动能殉爆炉",
 			"rare",
 			"converter",
-			"撞飞目标时按实时动能 √Ek 释放物理爆炸气浪，炸清周围路障并顺风推射自身。"
+			"强力撞飞路障时按实时动能 √Ek 释放物理爆炸气浪，掀翻周围障碍并顺风推射自身。"
 		)
 		.with_hook("on_smash_target", _hook_kinetic_furnace)
 	)
@@ -153,7 +153,7 @@ func _register_initial_12() -> void:
 			"碎障续秒器",
 			"rare",
 			"converter",
-			"每累计触发 4 次撞碎结算，倒计时立即 +1.5 秒并爆发一次前向提速脉冲。"
+			"每累计触发 4 次有效破障冲撞，倒计时立即 +1.5 秒并爆发一次前向提速脉冲。"
 		)
 		.with_hook("on_smash_target", _hook_smash_chrono)
 	)
@@ -178,7 +178,7 @@ func _register_initial_12() -> void:
 			"动量过载引擎",
 			"legendary",
 			"rule_breaker",
-			"【唯一】每次撞碎、落地或反弹叠 1 层过载（最高 20 层），每层使所有词条冲量输出 +12%。",
+			"【唯一】每次有效撞飞、落地或反弹叠 1 层过载（最高 20 层），每层使所有词条冲量输出 +12%。",
 			false
 		)
 		.with_flag("overload_engine")

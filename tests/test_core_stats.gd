@@ -6,6 +6,7 @@ func run() -> void:
 	_test_stat_sheet_dual_multiplier_synergy()
 	_test_run_state_length_progression_and_timer()
 	_test_deterministic_seed_parsing_and_subseeds()
+	_test_upgrade_catalog_persistent_impact_copy()
 	_test_material_library_metadata_and_friction()
 
 
@@ -142,6 +143,35 @@ func _test_deterministic_seed_parsing_and_subseeds() -> void:
 	assert_true(state_a.run_seed != state_b.run_seed, "Distinct huge numeric strings do not clamp to identical INT64_MAX")
 
 
+func _test_upgrade_catalog_persistent_impact_copy() -> void:
+	var catalog_script: GDScript = load("res://src/upgrades/upgrade_catalog.gd")
+	assert_true(catalog_script != null, "UpgradeCatalog script must exist")
+	if catalog_script == null:
+		return
+
+	var catalog = catalog_script.new()
+	assert_eq(
+		catalog.get_upgrade("tungsten_core").description,
+		"质量 ×1.65，冲撞障碍时的前向减速损耗降低 50%（直接放大动量 P 与碾压优势）。",
+		"tungsten_core copy reflects persistent physical impacts"
+	)
+	assert_eq(
+		catalog.get_upgrade("kinetic_furnace").description,
+		"强力撞飞路障时按实时动能 √Ek 释放物理爆炸气浪，掀翻周围障碍并顺风推射自身。",
+		"kinetic_furnace copy reflects persistent physical impacts"
+	)
+	assert_eq(
+		catalog.get_upgrade("smash_chrono").description,
+		"每累计触发 4 次有效破障冲撞，倒计时立即 +1.5 秒并爆发一次前向提速脉冲。",
+		"smash_chrono copy reflects persistent physical impacts"
+	)
+	assert_eq(
+		catalog.get_upgrade("momentum_overload").description,
+		"【唯一】每次有效撞飞、落地或反弹叠 1 层过载（最高 20 层），每层使所有词条冲量输出 +12%。",
+		"momentum_overload copy reflects persistent physical impacts"
+	)
+
+
 func _test_material_library_metadata_and_friction() -> void:
 	var lib_script: GDScript = load("res://src/core/material_library.gd")
 	assert_true(lib_script != null, "MaterialLibrary script must exist")
@@ -181,6 +211,16 @@ func _test_material_library_metadata_and_friction() -> void:
 	assert_eq(jelly_out.transparency, BaseMaterial3D.TRANSPARENCY_ALPHA, "Jelly outer layer is translucent")
 	assert_lt(jelly_out.roughness, 0.20, "Jelly outer layer is glossy")
 	assert_true(jelly_core.emission_enabled, "Jelly core glows softly from within")
+
+	var charred: StandardMaterial3D = lib_script.make_charred_husk_material()
+	var pin_stripe: StandardMaterial3D = lib_script.make_pin_stripe_material()
+	var custom_pin_stripe: StandardMaterial3D = lib_script.make_pin_stripe_material(Color(0.15, 0.55, 0.90))
+	assert_true(charred != null, "Charred barrel husk material created")
+	assert_gt(charred.roughness, 0.72, "Charred husk is soot-matte high roughness")
+	assert_lt(charred.albedo_color.r, 0.35, "Charred husk has dark scorched tint")
+	assert_true(pin_stripe != null, "WoodenPin lacquer stripe material created")
+	assert_lt(pin_stripe.roughness, 0.35, "WoodenPin stripe has glossy painted finish")
+	assert_eq(custom_pin_stripe.albedo_color, Color(0.15, 0.55, 0.90), "WoodenPin stripe respects custom lacquer color")
 
 	var dummy := Node3D.new()
 	var old_front := Node3D.new()

@@ -165,6 +165,28 @@ static func make_retro_barrel_material() -> StandardMaterial3D:
 	return mat
 
 
+static func make_charred_husk_material() -> StandardMaterial3D:
+	var mat := _new_base_material()
+	mat.albedo_texture = _load_cached_texture(TEX_METAL_CAST_IRON)
+	mat.albedo_color = Color(0.22, 0.20, 0.19)
+	mat.metallic = 0.28
+	mat.roughness = 0.84
+	mat.metallic_specular = 0.14
+	mat.uv1_triplanar = true
+	mat.uv1_scale = Vector3(0.85, 0.85, 0.85)
+	mat.uv1_triplanar_sharpness = 4.0
+	return mat
+
+
+static func make_pin_stripe_material(color: Color = Color(0.92, 0.28, 0.18)) -> StandardMaterial3D:
+	var mat := _new_base_material()
+	mat.albedo_color = color
+	mat.metallic = 0.06
+	mat.roughness = 0.24
+	mat.metallic_specular = 0.62
+	return mat
+
+
 static func make_silicone_soft_material(color: Color) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_color = color
