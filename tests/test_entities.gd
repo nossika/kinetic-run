@@ -7,6 +7,7 @@ func run() -> void:
 	await _test_boost_pad_anchored_bumper_and_barrel_rigidbody_chain()
 	await _test_spring_pad_bonus_ring_and_aerial_blockers()
 	await _test_sloped_floor_stability_and_flying_debris_barrel_hit()
+	await _test_wind_zone_3d_vectors_synergy_and_indiscriminate_rigidbodies()
 
 
 func _script_has_method(scr: GDScript, method_name: String) -> bool:
@@ -802,3 +803,167 @@ func _test_sloped_floor_stability_and_flying_debris_barrel_hit() -> void:
 
 	root.queue_free()
 	await scene_tree.process_frame
+
+
+func _test_wind_zone_3d_vectors_synergy_and_indiscriminate_rigidbodies() -> void:
+	var factory_script: GDScript = load("res://src/track/entities/track_entity_factory.gd")
+	var catalog_script: GDScript = load("res://src/upgrades/upgrade_catalog.gd")
+	var mat_script: GDScript = load("res://src/core/material_library.gd")
+	if factory_script == null or catalog_script == null or mat_script == null:
+		return
+
+	assert_true(
+		_script_has_method(factory_script, "create_wind_zone"),
+		"TrackEntityFactory exposes create_wind_zone(pos, zone_size, preset, force_newtons)"
+	)
+	if not _script_has_method(factory_script, "create_wind_zone"):
+		return
+
+	var default_slime = factory_script.create_bouncer_slime(Vector3.ZERO)
+	assert_approx(default_slime.patrol_half_width, 3.5, 0.01, "create_bouncer_slime defaults patrol_half_w to 3.5m")
+	default_slime.free()
+
+	var root := Node3D.new()
+	scene_tree.root.add_child(root)
+	var space_rid := root.get_world_3d().space
+	PhysicsServer3D.area_set_param(space_rid, PhysicsServer3D.AREA_PARAM_GRAVITY_VECTOR, Vector3.DOWN)
+	PhysicsServer3D.area_set_param(space_rid, PhysicsServer3D.AREA_PARAM_GRAVITY, 22.0)
+
+	_add_flat_floor(root, -20.0, 70.0)
+	var catalog = catalog_script.new()
+	var sail_def = catalog.get_upgrade("tailwind_sail")
+	assert_true(
+		sail_def != null and sail_def.description.contains("顺风/上升风场"),
+		"tailwind_sail description documents tailwind/updraft wind zone synergy"
+	)
+
+	# 1. Crosswind (+X) pushes PlayerBall3D laterally along +X, checks bounds & _visual_phase advancement
+	var cross_wind = factory_script.create_wind_zone(Vector3(0.0, 2.0, -8.0), Vector3(12.0, 4.0, 12.0), "cross_right", 28.0)
+	root.add_child(cross_wind)
+	assert_true(cross_wind.is_in_group("wind_zone"), "WindZone joins group 'wind_zone'")
+	assert_eq(cross_wind.collision_layer, 0, "WindZone collision_layer is 0")
+	assert_eq(cross_wind.collision_mask, 1, "WindZone collision_mask is 1")
+	assert_true(cross_wind.contains_local_point(Vector3(0.0, 2.0, -8.0)), "contains_local_point is true inside WindZone")
+	assert_true(cross_wind.contains_local_point(Vector3(6.2, 2.0, -8.0), 0.25), "contains_local_point includes margin")
+	assert_false(cross_wind.contains_local_point(Vector3(6.5, 2.0, -8.0), 0.25), "contains_local_point is false outside margin")
+
+	var ball_cross = _create_ball_in(root)
+	ball_cross.global_position = Vector3(0.0, 0.55, -8.0)
+	ball_cross.linear_velocity = Vector3.ZERO
+
+	for _f in range(18):
+		await scene_tree.physics_frame
+	assert_gt(ball_cross.linear_velocity.x, 2.5, "cross_right WindZone accelerates PlayerBall3D along +X")
+	assert_gt(float(cross_wind.get("_visual_phase")), 0.0, "WindZone advances _visual_phase deterministically in headless mode")
+	ball_cross.queue_free()
+	cross_wind.queue_free()
+	await scene_tree.physics_frame
+
+	# 2a. Updraft (+Y/-Z) lifts 1.5kg PlayerBall3D into upper air, and Tailwind Sail amplifies tailwind/updraft!
+	var updraft_base = factory_script.create_wind_zone(Vector3(-4.0, 3.5, -18.0), Vector3(5.0, 7.0, 12.0), "updraft", 46.0)
+	var updraft_sail = factory_script.create_wind_zone(Vector3(4.0, 3.5, -18.0), Vector3(5.0, 7.0, 12.0), "updraft", 46.0)
+	root.add_child(updraft_base)
+	root.add_child(updraft_sail)
+
+	var ball_base = _create_ball_in(root)
+	ball_base.global_position = Vector3(-4.0, 0.55, -15.0)
+	ball_base.linear_velocity = Vector3(0.0, 0.0, -4.0)
+
+	var ball_sail = _create_ball_in(root)
+	ball_sail.synergy_bus.apply_upgrade(catalog.get_upgrade("tailwind_sail"))
+	ball_sail.sync_from_stats()
+	ball_sail.global_position = Vector3(4.0, 0.55, -15.0)
+	ball_sail.linear_velocity = Vector3(0.0, 0.0, -4.0)
+
+	for _f in range(28):
+		await scene_tree.physics_frame
+
+	assert_gt(ball_base.global_position.y, 2.6, "Updraft WindZone physically lifts 1.5kg PlayerBall3D off the ground")
+	assert_gt(
+		ball_sail.global_position.y,
+		ball_base.global_position.y + 0.8,
+		"Tailwind Sail (external_boost_mult) significantly amplifies updraft lift height"
+	)
+	assert_lt(
+		ball_sail.linear_velocity.z,
+		ball_base.linear_velocity.z - 1.2,
+		"Tailwind Sail amplifies favorable forward -Z component of WindZone"
+	)
+
+	ball_base.queue_free()
+	ball_sail.queue_free()
+	updraft_base.queue_free()
+	updraft_sail.queue_free()
+	await scene_tree.physics_frame
+
+	# 2b. Pure tailwind (-Z) preset + Tailwind Sail synergy
+	var tw_base = factory_script.create_wind_zone(Vector3(-4.0, 2.0, -18.0), Vector3(5.0, 4.0, 16.0), "tailwind", 28.0)
+	var tw_sail = factory_script.create_wind_zone(Vector3(4.0, 2.0, -18.0), Vector3(5.0, 4.0, 16.0), "tailwind", 28.0)
+	root.add_child(tw_base)
+	root.add_child(tw_sail)
+
+	var ball_tw_base = _create_ball_in(root)
+	ball_tw_base.global_position = Vector3(-4.0, 0.55, -12.0)
+	ball_tw_base.linear_velocity = Vector3.ZERO
+
+	var ball_tw_sail = _create_ball_in(root)
+	ball_tw_sail.synergy_bus.apply_upgrade(catalog.get_upgrade("tailwind_sail"))
+	ball_tw_sail.sync_from_stats()
+	ball_tw_sail.global_position = Vector3(4.0, 0.55, -12.0)
+	ball_tw_sail.linear_velocity = Vector3.ZERO
+
+	for _f in range(20):
+		await scene_tree.physics_frame
+
+	assert_lt(ball_tw_base.linear_velocity.z, -3.5, "tailwind WindZone accelerates PlayerBall3D along -Z")
+	assert_lt(
+		ball_tw_sail.linear_velocity.z,
+		ball_tw_base.linear_velocity.z - 2.2,
+		"Tailwind Sail strongly amplifies pure tailwind (-Z) WindZone acceleration"
+	)
+
+	ball_tw_base.queue_free()
+	ball_tw_sail.queue_free()
+	tw_base.queue_free()
+	tw_sail.queue_free()
+	await scene_tree.physics_frame
+
+	# 3. Indiscriminate rigidbody wind physics: blows 500g crate, topples 800g pin, untethers & blows 250g balloon,
+	#    rolls 0.45kg EMPTY barrel husk, while 12kg mag_iron & 20kg ShieldBrute stand rock-solid!
+	var gale_zone = factory_script.create_wind_zone(Vector3(0.0, 2.5, -34.0), Vector3(14.0, 5.5, 14.0), "cross_right", 28.0)
+	var wind_crate = factory_script.create_crate(Vector3(-3.0, 0.48, -31.0), "light")
+	var wind_pin = factory_script.create_wooden_pin(Vector3(-3.0, 0.78, -34.0))
+	var wind_balloon = factory_script.create_aerial_blocker(Vector3(-3.0, 3.0, -36.5), "soft_balloon", 0.0)
+	var wind_iron = factory_script.create_aerial_blocker(Vector3(2.0, 3.2, -36.5), "mag_iron", 0.0)
+	var wind_brute = factory_script.create_shield_brute(Vector3(2.0, 0.70, -32.0))
+	var wind_husk = factory_script.create_explosive_barrel(Vector3(-3.0, 0.65, -39.0))
+	root.add_child(gale_zone)
+	root.add_child(wind_crate)
+	root.add_child(wind_pin)
+	root.add_child(wind_balloon)
+	root.add_child(wind_iron)
+	root.add_child(wind_brute)
+	root.add_child(wind_husk)
+	var empty_entities: Array[Node3D] = []
+	wind_husk.detonate(null, empty_entities, 0)
+	wind_husk.position = Vector3(-3.0, 0.65, -39.0)
+	wind_husk.linear_velocity = Vector3.ZERO
+	wind_husk.angular_velocity = Vector3.ZERO
+
+	var min_pin_up := 1.0
+	for _f in range(36):
+		await scene_tree.physics_frame
+		min_pin_up = minf(min_pin_up, wind_pin.transform.basis.y.normalized().dot(Vector3.UP))
+
+	assert_gt(wind_crate.position.x - (-3.0), 0.8, "WindZone blows 500g light crate substantially along +X")
+	assert_lt(min_pin_up, 0.78, "WindZone topples 800g WoodenPin via aerodynamic torque (up_dot < 0.78)")
+	assert_gt(wind_pin.position.x - (-3.0), 0.4, "WindZone pushes toppled 800g WoodenPin along +X")
+	assert_false(bool(wind_balloon.get("is_tethered")), "Strong WindZone untethers 250g soft_balloon")
+	assert_gt(wind_balloon.position.x - (-3.0), 1.5, "WindZone blows 250g soft_balloon briskly along +X")
+	assert_gt(wind_husk.position.x - (-3.0), 0.8, "WindZone blows/rolls 0.45kg EMPTY barrel husk along +X")
+	assert_true(bool(wind_iron.get("is_tethered")), "12kg mag_iron magnetic lock resists wind untethering")
+	assert_lt(absf(wind_brute.position.x - 2.0), 0.08, "20kg ShieldBrute stands rock-solid in WindZone via pure Newtonian static friction")
+
+	root.queue_free()
+	await scene_tree.process_frame
+

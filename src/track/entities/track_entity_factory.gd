@@ -27,7 +27,7 @@ static func create_slime_zone(pos: Vector3, size: Vector2 = Vector2(4.0, 6.0)) -
 	return n
 
 
-static func create_bouncer_slime(pos: Vector3, patrol_half_w: float = 2.6) -> BouncerSlime:
+static func create_bouncer_slime(pos: Vector3, patrol_half_w: float = 3.5) -> BouncerSlime:
 	var n := BouncerSlime.new()
 	n.patrol_half_width = patrol_half_w
 	n.position = pos
@@ -77,5 +77,17 @@ static func create_aerial_blocker(
 ) -> AerialBlocker:
 	var n := AerialBlocker.new()
 	n.configure_type(blocker_type, initial_phase)
+	n.position = pos
+	return n
+
+
+static func create_wind_zone(
+	pos: Vector3,
+	zone_size: Vector3 = Vector3(6.0, 3.6, 12.0),
+	preset: String = "cross_right",
+	force_newtons: float = -1.0
+) -> WindZone:
+	var n := WindZone.new()
+	n.configure_wind(zone_size, preset, force_newtons)
 	n.position = pos
 	return n

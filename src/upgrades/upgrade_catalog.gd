@@ -142,7 +142,7 @@ func _register_initial_12() -> void:
 			"顺风帆装甲",
 			"common",
 			"chassis",
-			"受到加速带、缓冲桩与爆炸气浪作用时，获得的前向冲量 ×1.75。"
+			"受到加速带、缓冲桩、顺风/上升风场与爆炸气浪作用时，获得的有利推进力 ×1.75。"
 		)
 		.with_mult("external_boost_mult", 0.75)
 	)
