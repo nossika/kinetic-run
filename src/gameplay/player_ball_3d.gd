@@ -18,6 +18,9 @@ const MIN_RAIL_BOUNCE_DV: float = 0.75
 
 var synergy_bus: PhysicsSynergyBus = null
 var track_reference: Node3D = null
+var current_starter_ball: StarterBallDefinition = null
+var current_shape_type: String = "sphere"
+var base_friction: float = 0.42
 var current_radius: float = 0.55
 var safe_floor_y: float = 0.0
 var last_safe_pos: Vector3 = Vector3(0.0, 0.8, -2.0)
@@ -183,28 +186,7 @@ func _build_nodes_if_needed() -> void:
 	_core_mesh.name = "CoreMesh"
 	_visual_root.add_child(_core_mesh)
 
-	if not is_headless:
-		var sm := SphereMesh.new()
-		sm.radius = 0.55
-		sm.height = 1.10
-		sm.radial_segments = 32
-		sm.rings = 20
-		sm.material = MaterialLibrary.make_tungsten_ball_material()
-		RenderHelper.attach_mesh(_core_mesh, sm)
-
-		var groove_mat := MaterialLibrary.make_silicone_soft_material(Color(0.96, 0.78, 0.46))
-		for idx in range(2):
-			var band := MeshInstance3D.new()
-			var band_torus := TorusMesh.new()
-			band_torus.inner_radius = 0.525
-			band_torus.outer_radius = 0.562
-			band_torus.rings = 28
-			band_torus.ring_segments = 12
-			band_torus.material = groove_mat
-			RenderHelper.attach_mesh(band, band_torus)
-			if idx == 1:
-				band.rotation_degrees.z = 90.0
-			_visual_root.add_child(band)
+	_rebuild_visual_mesh_for_shape()
 
 	_hud_ring_root = Node3D.new()
 	_hud_ring_root.name = "HudRingRoot"
@@ -226,19 +208,90 @@ func _build_nodes_if_needed() -> void:
 	set_meta("weight_label", "%0.1fkg" % mass)
 
 
-func _build_hud_ring_visuals() -> void:
-	var halo_inst := MeshInstance3D.new()
-	halo_inst.name = "EquatorialHalo"
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.64
-	torus.outer_radius = 0.675
-	torus.rings = 28
-	torus.ring_segments = 12
-	torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.98, 0.94, 0.86, 0.22))
-	RenderHelper.attach_mesh(halo_inst, torus)
-	halo_inst.position = Vector3(0.0, 0.05, 0.0)
-	_hud_ring_root.add_child(halo_inst)
+func apply_starter_ball(def: StarterBallDefinition) -> void:
+	current_starter_ball = def
+	if def != null:
+		current_shape_type = def.shape_type
+		base_friction = def.friction
+		if synergy_bus != null:
+			synergy_bus.stats.set_base_override("mass", def.mass)
+			synergy_bus.stats.set_base_override("radius", def.radius)
+			synergy_bus.stats.set_base_override("bounce", def.bounce)
+			synergy_bus.stats.set_base_override("linear_damp", def.linear_damp)
+	else:
+		current_shape_type = "sphere"
+		base_friction = 0.42
+		if synergy_bus != null:
+			synergy_bus.stats.clear_base_overrides()
 
+	_build_nodes_if_needed()
+	sync_from_stats()
+	_rebuild_visual_mesh_for_shape()
+
+
+func _rebuild_collision_shape_for_radius() -> void:
+	if _collision_shape == null:
+		return
+	match current_shape_type:
+		"rugby":
+			_collision_shape.rotation_degrees = Vector3.ZERO
+			_collision_shape.shape = ClayMeshBuilder.make_ellipsoid_convex_shape(
+				Vector3(current_radius * 1.32, current_radius, current_radius),
+				24,
+				14
+			)
+		"capsule_roller":
+			var cap := CapsuleShape3D.new()
+			cap.radius = current_radius
+			cap.height = current_radius * 2.52
+			_collision_shape.rotation_degrees = Vector3(0.0, 0.0, 90.0)
+			_collision_shape.shape = cap
+		_:
+			if _sphere_shape == null:
+				_sphere_shape = SphereShape3D.new()
+			_sphere_shape.radius = current_radius
+			_collision_shape.rotation_degrees = Vector3.ZERO
+			_collision_shape.shape = _sphere_shape
+
+
+func _rebuild_visual_mesh_for_shape() -> void:
+	if _core_mesh == null or DisplayServer.get_name() == "headless":
+		return
+	var livery_path := MaterialLibrary.TEX_BALL_LIVERY_BEACH
+	var tint := Color.WHITE
+	if current_starter_ball != null:
+		livery_path = current_starter_ball.livery_texture_path
+		tint = current_starter_ball.primary_tint
+	var ball_mat := MaterialLibrary.make_starter_ball_material(livery_path, tint)
+
+	match current_shape_type:
+		"rugby":
+			_core_mesh.rotation_degrees = Vector3.ZERO
+			var ellip := ClayMeshBuilder.make_ellipsoid_mesh(
+				Vector3(StatSheet.BASE_RADIUS * 1.32, StatSheet.BASE_RADIUS, StatSheet.BASE_RADIUS),
+				32,
+				18
+			)
+			ClayMeshBuilder.assign_mesh(_core_mesh, ellip, ball_mat)
+		"capsule_roller":
+			_core_mesh.rotation_degrees = Vector3(0.0, 0.0, 90.0)
+			var cm := CapsuleMesh.new()
+			cm.radius = StatSheet.BASE_RADIUS
+			cm.height = StatSheet.BASE_RADIUS * 2.52
+			cm.radial_segments = 32
+			cm.rings = 12
+			ClayMeshBuilder.assign_mesh(_core_mesh, cm, ball_mat)
+		_:
+			_core_mesh.rotation_degrees = Vector3.ZERO
+			var sm := SphereMesh.new()
+			sm.radius = StatSheet.BASE_RADIUS
+			sm.height = StatSheet.BASE_RADIUS * 2.0
+			sm.radial_segments = 32
+			sm.rings = 20
+			ClayMeshBuilder.assign_mesh(_core_mesh, sm, ball_mat)
+
+
+func _build_hud_ring_visuals() -> void:
 	_weight_label_3d = Label3D.new()
 	_weight_label_3d.name = "BallWeightLabel"
 	var font := load(MaterialLibrary.BUNDLED_FONT_PATH) as Font
@@ -326,7 +379,10 @@ func _update_hud_ring_transform() -> void:
 	if _hud_ring_root == null:
 		return
 	var scale_factor := current_radius / StatSheet.BASE_RADIUS
-	var target_basis := _get_track_basis().scaled(Vector3.ONE * scale_factor)
+	var lateral_mult := 1.0
+	if current_shape_type == "rugby" or current_shape_type == "capsule_roller":
+		lateral_mult = 1.28
+	var target_basis := _get_track_basis().scaled(Vector3(scale_factor * lateral_mult, scale_factor, scale_factor))
 	if is_inside_tree():
 		_hud_ring_root.global_transform = Transform3D(target_basis, global_position)
 	else:
@@ -386,14 +442,18 @@ func sync_from_stats() -> void:
 		var st := synergy_bus.stats
 		mass = st.get_stat("mass")
 		current_radius = st.get_stat("radius")
-		if _sphere_shape != null:
-			_sphere_shape.radius = current_radius
+		_rebuild_collision_shape_for_radius()
 		if _visual_root != null:
 			var scale_factor := current_radius / StatSheet.BASE_RADIUS
 			_visual_root.scale = Vector3.ONE * scale_factor
 		if physics_material_override != null:
 			physics_material_override.bounce = st.get_stat("bounce")
+			physics_material_override.friction = base_friction
 		_refresh_damp()
+	else:
+		_rebuild_collision_shape_for_radius()
+		if physics_material_override != null:
+			physics_material_override.friction = base_friction
 
 	var weight_txt := "%0.1fkg" % mass
 	set_meta("weight_label", weight_txt)

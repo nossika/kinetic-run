@@ -7,6 +7,7 @@ func run() -> void:
 	_test_chase_camera_zero_roll_and_dynamic_fov()
 	await _test_real_collision_mass_ratio_and_tungsten_synergy()
 	await _test_sky_platform_landing_and_elevated_control()
+	await _test_starter_ball_shapes_roll_smoothly_and_remove_halo()
 
 
 func _test_lateral_thrust_controller_instant_start_stop_and_vertical_gravity() -> void:
@@ -618,3 +619,74 @@ func _test_sky_platform_landing_and_elevated_control() -> void:
 
 	root.queue_free()
 	await scene_tree.process_frame
+
+
+func _test_starter_ball_shapes_roll_smoothly_and_remove_halo() -> void:
+	var cat_script: GDScript = load("res://src/core/starter_ball_catalog.gd")
+	assert_true(cat_script != null, "StarterBallCatalog script must exist for physics test")
+	if cat_script == null:
+		return
+
+	var root := Node3D.new()
+	scene_tree.root.add_child(root)
+	var thrust_ctrl := LateralThrustController.new()
+	thrust_ctrl.apply_vertical_gravity_to_space(root.get_world_3d().space)
+
+	var sloped_track := Node3D.new()
+	sloped_track.rotation_degrees = Vector3(-11.0, 0.0, 0.0)
+	root.add_child(sloped_track)
+
+	var floor_body := StaticBody3D.new()
+	floor_body.physics_material_override = MaterialLibrary.high_friction_physics(0.88, 0.12)
+	var floor_col := CollisionShape3D.new()
+	var floor_box := BoxShape3D.new()
+	floor_box.size = Vector3(14.0, 0.6, 80.0)
+	floor_col.shape = floor_box
+	floor_col.position = Vector3(0.0, -0.3, -35.0)
+	floor_body.add_child(floor_col)
+	sloped_track.add_child(floor_body)
+
+	var rolled_balls: Array = cat_script.roll_starter_balls(20261126, 3)
+	for def in rolled_balls:
+		var bus := PhysicsSynergyBus.new()
+		var ball := PlayerBall3D.new()
+		root.add_child(ball)
+		ball.setup(bus)
+		ball.track_reference = sloped_track
+		ball.apply_starter_ball(def)
+
+		assert_true(
+			ball._hud_ring_root.get_node_or_null("EquatorialHalo") == null,
+			"Redundant EquatorialHalo ring is removed from PlayerBall3D"
+		)
+		assert_approx(ball.mass, def.mass, 0.01, "Ball mass matches StarterBallDefinition (%s)" % def.shape_type)
+		assert_approx(ball.current_radius, def.radius, 0.01, "Ball radius matches StarterBallDefinition (%s)" % def.shape_type)
+		assert_approx(ball.physics_material_override.friction, def.friction, 0.01, "Ball friction matches StarterBallDefinition")
+		assert_approx(ball.physics_material_override.bounce, def.bounce, 0.01, "Ball bounce matches StarterBallDefinition")
+
+		var start_world := sloped_track.to_global(Vector3(0.0, ball.current_radius + 0.12, -2.0))
+		ball.reset_for_track(start_world)
+		await scene_tree.physics_frame
+
+		for _f in range(48):
+			ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+			await scene_tree.physics_frame
+
+		var end_local := sloped_track.to_local(ball.global_position)
+		assert_lt(
+			end_local.z,
+			-5.0,
+			"Starter ball shape '%s' rolls smoothly downhill along -Z without stalling" % def.shape_type
+		)
+		assert_gt(
+			ball.angular_velocity.length(),
+			1.5,
+			"Starter ball shape '%s' builds clear rolling angular velocity" % def.shape_type
+		)
+
+		ball.queue_free()
+		await scene_tree.process_frame
+
+	root.queue_free()
+	await scene_tree.process_frame
+

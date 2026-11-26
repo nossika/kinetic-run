@@ -464,3 +464,97 @@ static func attach_clay_eyes(
 
 	parent.add_child(root)
 	return root
+
+
+static func make_ellipsoid_mesh(
+	radii: Vector3,
+	radial_segments: int = 32,
+	rings: int = 18,
+	force_build: bool = false
+) -> ArrayMesh:
+	if _is_headless() and not force_build:
+		return null
+
+	var rx := maxf(0.05, radii.x)
+	var ry := maxf(0.05, radii.y)
+	var rz := maxf(0.05, radii.z)
+	var segs := clampi(radial_segments, 12, 64)
+	var r_cnt := clampi(rings, 8, 40)
+	var key := "ellip_%d_%d_%d_%d_%d" % [_q(rx), _q(ry), _q(rz), segs, r_cnt]
+	if _mesh_cache.has(key):
+		return _mesh_cache[key] as ArrayMesh
+
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	var wind_sign := _get_front_winding_sign()
+
+	for ir in range(r_cnt + 1):
+		var v := float(ir) / float(r_cnt)
+		var phi := PI * (0.5 - v)
+		var cos_p := cos(phi)
+		var sin_p := sin(phi)
+		for iseg in range(segs + 1):
+			var u := float(iseg) / float(segs)
+			var theta := u * TAU
+			var cos_t := cos(theta)
+			var sin_t := sin(theta)
+			var ux := cos_p * cos_t
+			var uy := sin_p
+			var uz := cos_p * sin_t
+			verts.append(Vector3(rx * ux, ry * uy, rz * uz))
+			var n := Vector3(ux / rx, uy / ry, uz / rz).normalized()
+			norms.append(n if n.length_squared() > 0.0001 else Vector3.UP)
+			uvs.append(Vector2(u, v))
+
+	var stride := segs + 1
+	for ir in range(r_cnt):
+		for iseg in range(segs):
+			var i0 := ir * stride + iseg
+			var i1 := i0 + 1
+			var i2 := i0 + stride
+			var i3 := i2 + 1
+			if ir > 0:
+				_append_oriented_tri(indices, verts, norms, i0, i1, i3, wind_sign)
+			if ir < r_cnt - 1:
+				_append_oriented_tri(indices, verts, norms, i0, i3, i2, wind_sign)
+
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_mesh_cache[key] = mesh
+	return mesh
+
+
+static func make_ellipsoid_convex_shape(
+	radii: Vector3,
+	radial_segments: int = 24,
+	rings: int = 14
+) -> ConvexPolygonShape3D:
+	var rx := maxf(0.05, radii.x)
+	var ry := maxf(0.05, radii.y)
+	var rz := maxf(0.05, radii.z)
+	var segs := clampi(radial_segments, 12, 48)
+	var r_cnt := clampi(rings, 8, 32)
+
+	var pts := PackedVector3Array()
+	pts.append(Vector3(0.0, ry, 0.0))
+	pts.append(Vector3(0.0, -ry, 0.0))
+	for ir in range(1, r_cnt):
+		var v := float(ir) / float(r_cnt)
+		var phi := PI * (0.5 - v)
+		var cos_p := cos(phi)
+		var sin_p := sin(phi)
+		for iseg in range(segs):
+			var theta := (float(iseg) / float(segs)) * TAU
+			pts.append(Vector3(rx * cos_p * cos(theta), ry * sin_p, rz * cos_p * sin(theta)))
+
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = pts
+	return shape

@@ -10,6 +10,7 @@ func run() -> void:
 	_test_material_library_metadata_and_friction()
 	_test_clay_mesh_builder_shapes_and_caching()
 	_test_storybook_ui_theme_styles()
+	_test_starter_ball_catalog_seed_determinism_and_diversity()
 
 
 func _test_stat_sheet_defaults_and_clamping() -> void:
@@ -335,5 +336,46 @@ func _test_storybook_ui_theme_styles() -> void:
 	var theme_res: Theme = ui_script.build_theme()
 	assert_true(theme_res.has_stylebox("normal", "Button"), "UiTheme configures rounded warm Button stylebox")
 	assert_true(theme_res.has_stylebox("fill", "ProgressBar"), "UiTheme configures rounded sage ProgressBar fill")
+
+
+func _test_starter_ball_catalog_seed_determinism_and_diversity() -> void:
+	var cat_script: GDScript = load("res://src/core/starter_ball_catalog.gd")
+	assert_true(cat_script != null, "StarterBallCatalog script must exist")
+	if cat_script == null:
+		return
+
+	var state_a := RunState.new()
+	state_a.start_new_run_from_text("BALL_SEED_2026")
+	var balls_a1: Array = cat_script.roll_starter_balls(state_a.run_seed, 3)
+	var balls_a2: Array = cat_script.roll_starter_balls(state_a.run_seed, 3)
+	assert_eq(balls_a1.size(), 3, "roll_starter_balls generates 3 starter ball options")
+
+	var shapes_seen: Dictionary = {}
+	var liveries_seen: Dictionary = {}
+	for i in range(3):
+		var b1 = balls_a1[i]
+		var b2 = balls_a2[i]
+		assert_eq(b1.display_name, b2.display_name, "Same seed reproduces identical ball display_name")
+		assert_eq(b1.shape_type, b2.shape_type, "Same seed reproduces identical shape_type")
+		assert_approx(b1.mass, b2.mass, 0.0001, "Same seed reproduces identical mass")
+		assert_approx(b1.radius, b2.radius, 0.0001, "Same seed reproduces identical radius")
+		assert_approx(b1.bounce, b2.bounce, 0.0001, "Same seed reproduces identical bounce")
+		assert_approx(b1.friction, b2.friction, 0.0001, "Same seed reproduces identical friction")
+		shapes_seen[b1.shape_type] = true
+		liveries_seen[b1.livery_id] = true
+
+	assert_eq(shapes_seen.size(), 3, "3 starter balls cover all 3 smooth shapes (sphere, rugby, capsule_roller)")
+	assert_eq(liveries_seen.size(), 3, "3 starter balls use 3 distinct rolling liveries")
+
+	var state_b := RunState.new()
+	state_b.start_new_run_from_text("DIFFERENT_SEED_999")
+	var balls_b: Array = cat_script.roll_starter_balls(state_b.run_seed, 3)
+	var any_diff := false
+	for i in range(3):
+		if absf(balls_a1[i].mass - balls_b[i].mass) > 0.01 or balls_a1[i].livery_id != balls_b[i].livery_id or balls_a1[i].shape_type != balls_b[i].shape_type:
+			any_diff = true
+			break
+	assert_true(any_diff, "Changing seed regenerates distinct starter ball options")
+
 
 

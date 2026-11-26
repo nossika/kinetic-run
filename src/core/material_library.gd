@@ -167,6 +167,22 @@ static func make_tungsten_ball_material() -> StandardMaterial3D:
 	return mat
 
 
+static func make_starter_ball_material(
+	livery_path: String = TEX_BALL_LIVERY_BEACH,
+	tint: Color = Color.WHITE
+) -> StandardMaterial3D:
+	var mat := _new_base_material()
+	var tex := _load_cached_texture(livery_path)
+	if tex == null:
+		tex = _load_cached_texture(TEX_BALL_LIVERY_BEACH)
+	mat.albedo_texture = tex
+	mat.albedo_color = tint
+	mat.metallic = 0.05
+	mat.roughness = 0.34
+	mat.metallic_specular = 0.48
+	return mat
+
+
 static func make_retro_barrel_material() -> StandardMaterial3D:
 	var mat := _new_base_material()
 	var tex := _load_cached_texture(TEX_BARREL_RETRO_HAZARD)

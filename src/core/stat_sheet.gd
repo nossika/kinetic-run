@@ -18,15 +18,29 @@ const STAT_DEFS: Dictionary = {
 	"shockwave_radius_mult": {"base": 1.0, "min": 0.5, "max": 5.0},
 }
 
+var _base_overrides: Dictionary = {}
 var _flats: Dictionary = {}
 var _mults: Dictionary = {}
 var _flags: Dictionary = {}
 
 
 func reset_modifiers() -> void:
+	_base_overrides.clear()
 	_flats.clear()
 	_mults.clear()
 	_flags.clear()
+
+
+func set_base_override(key: String, value: float) -> void:
+	if not STAT_DEFS.has(key):
+		push_warning("Unknown stat key: %s" % key)
+		return
+	var def: Dictionary = STAT_DEFS[key]
+	_base_overrides[key] = clampf(value, float(def["min"]), float(def["max"]))
+
+
+func clear_base_overrides() -> void:
+	_base_overrides.clear()
 
 
 func add_flat(key: String, amount: float) -> void:
@@ -63,7 +77,8 @@ func get_stat(key: String) -> float:
 		return 0.0
 
 	var def: Dictionary = STAT_DEFS[key]
-	var raw_val: float = float(def["base"]) + float(_flats.get(key, 0.0))
+	var base_val: float = float(_base_overrides.get(key, def["base"]))
+	var raw_val: float = base_val + float(_flats.get(key, 0.0))
 	if _mults.has(key):
 		var list: Array = _mults[key]
 		for ratio in list:

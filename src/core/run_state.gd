@@ -51,6 +51,11 @@ static func derive_draft_seed(p_run_seed: int, cleared_level: int) -> int:
 	return _splitmix32((safe_seed * 53 + safe_level * 104729 + 0x24681357) & 0x7FFFFFFF)
 
 
+static func derive_starter_ball_seed(p_run_seed: int) -> int:
+	var safe_seed := p_run_seed & 0x7FFFFFFF
+	return _splitmix32((safe_seed * 73 + 0x35791357) & 0x7FFFFFFF)
+
+
 static func target_length_for_level(level: int) -> float:
 	var clamped_lvl := maxi(1, level)
 	var step := clamped_lvl - 1
