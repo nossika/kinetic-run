@@ -1,7 +1,7 @@
 class_name TrackChunkBase
 extends Node3D
 
-const STANDARD_WIDTH: float = 10.0
+const STANDARD_WIDTH: float = 12.5
 const FLOOR_THICKNESS: float = 0.6
 
 var chunk_type: String = "StraightWide"
@@ -157,7 +157,7 @@ func _attach_rail_stanchions(rail: StaticBody3D, size: Vector3, show_front_fixed
 		MaterialLibrary.attach_anchored_flange_base(post, 0.0, half_x, 0.55, show_lbl)
 
 
-func add_side_launch_ramp(local_pos: Vector3, width: float = 2.4) -> StaticBody3D:
+func add_side_launch_ramp(local_pos: Vector3, width: float = 3.0) -> StaticBody3D:
 	const RAMP_PITCH_DEG: float = 16.0
 	const RAMP_LEN: float = 5.25
 	const RAMP_THICKNESS: float = 0.36
@@ -208,6 +208,89 @@ func add_side_launch_ramp(local_pos: Vector3, width: float = 2.4) -> StaticBody3
 	return ramp
 
 
+func add_sky_platform(
+	local_pos: Vector3,
+	size: Vector3 = Vector3(3.8, 0.34, 11.5),
+	with_end_kick: bool = false
+) -> StaticBody3D:
+	var deck := StaticBody3D.new()
+	deck.name = "SkyPlatform"
+	deck.add_to_group("sky_platform")
+	deck.position = local_pos
+	deck.physics_material_override = MaterialLibrary.high_friction_physics(0.80, 0.14)
+	deck.set_meta("is_anchored_fixed", true)
+
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	deck.add_child(col)
+
+	var kick_len := 2.6
+	var kick_pitch_deg := 12.0
+	var kick_rad := deg_to_rad(kick_pitch_deg)
+	var kick_offset := Vector3(
+		0.0,
+		(kick_len * 0.5) * sin(kick_rad),
+		-size.z * 0.5 - (kick_len * 0.5) * cos(kick_rad) + 0.08
+	)
+	if with_end_kick:
+		var kick_col := CollisionShape3D.new()
+		var kick_shape := BoxShape3D.new()
+		kick_shape.size = Vector3(size.x, size.y, kick_len)
+		kick_col.shape = kick_shape
+		kick_col.position = kick_offset
+		kick_col.rotation_degrees = Vector3(kick_pitch_deg, 0.0, 0.0)
+		deck.add_child(kick_col)
+
+	if DisplayServer.get_name() != "headless":
+		var deck_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.32, 0.90, 1.0, 0.64))
+		var trim_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.76, 0.98, 1.0, 0.86))
+		var strut_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.98, 0.80, 0.36, 0.52))
+
+		var deck_mesh := MeshInstance3D.new()
+		var deck_box := BoxMesh.new()
+		deck_box.size = size
+		deck_box.material = deck_mat
+		RenderHelper.attach_mesh(deck_mesh, deck_box)
+		deck.add_child(deck_mesh)
+
+		for side_sign in [-1.0, 1.0]:
+			var curb := MeshInstance3D.new()
+			var curb_box := BoxMesh.new()
+			curb_box.size = Vector3(0.09, 0.10, size.z)
+			curb_box.material = trim_mat
+			RenderHelper.attach_mesh(curb, curb_box)
+			curb.position = Vector3(side_sign * (size.x * 0.5 - 0.045), size.y * 0.5 + 0.05, 0.0)
+			deck.add_child(curb)
+
+			# Slender angled side-stay cables (visual only, leaving ground lane 100% clear)
+			var stay := MeshInstance3D.new()
+			var stay_cyl := CylinderMesh.new()
+			stay_cyl.top_radius = 0.035
+			stay_cyl.bottom_radius = 0.035
+			stay_cyl.height = 1.85
+			stay_cyl.radial_segments = 8
+			stay_cyl.material = strut_mat
+			RenderHelper.attach_mesh(stay, stay_cyl)
+			stay.position = Vector3(side_sign * (size.x * 0.5 + 0.28), -0.78, 0.0)
+			stay.rotation_degrees = Vector3(0.0, 0.0, side_sign * 22.0)
+			deck.add_child(stay)
+
+		if with_end_kick:
+			var kick_mesh := MeshInstance3D.new()
+			var kick_box := BoxMesh.new()
+			kick_box.size = Vector3(size.x, size.y, kick_len)
+			kick_box.material = trim_mat
+			RenderHelper.attach_mesh(kick_mesh, kick_box)
+			kick_mesh.position = kick_offset
+			kick_mesh.rotation_degrees = Vector3(kick_pitch_deg, 0.0, 0.0)
+			deck.add_child(kick_mesh)
+
+	add_child(deck)
+	return deck
+
+
 func _add_speed_stripes(z_len: float, half_w: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
@@ -232,10 +315,10 @@ func _build_straight_wide() -> void:
 		Vector3(STANDARD_WIDTH, FLOOR_THICKNESS, length),
 		Color(1.0, 0.98, 0.94)
 	)
-	_add_speed_stripes(length, 4.2)
+	_add_speed_stripes(length, 5.25)
 	var rail_col := Color(0.22, 0.78, 0.98)
-	_add_guard_rail(Vector3(-5.2, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
-	_add_guard_rail(Vector3(5.2, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
+	_add_guard_rail(Vector3(-6.45, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
+	_add_guard_rail(Vector3(6.45, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
 
 
 func _build_wave_hills() -> void:
@@ -284,31 +367,31 @@ func _build_wave_hills() -> void:
 	)
 
 	var rail_col := Color(0.24, 0.86, 0.96)
-	_add_guard_rail(Vector3(-5.2, 1.2, -length * 0.5), Vector3(0.4, 2.4, length), rail_col)
-	_add_guard_rail(Vector3(5.2, 1.2, -length * 0.5), Vector3(0.4, 2.4, length), rail_col)
+	_add_guard_rail(Vector3(-6.45, 1.2, -length * 0.5), Vector3(0.4, 2.4, length), rail_col)
+	_add_guard_rail(Vector3(6.45, 1.2, -length * 0.5), Vector3(0.4, 2.4, length), rail_col)
 
 
 func _build_narrow_bridge() -> void:
-	# Entry & exit transition aprons + 4.2m narrow unrailed beechwood bridge
+	# Entry & exit transition aprons + 5.25m narrow unrailed beechwood bridge
 	_add_floor_slab(
 		Vector3(0.0, -FLOOR_THICKNESS * 0.5, -2.0),
-		Vector3(8.0, FLOOR_THICKNESS, 4.0),
+		Vector3(10.0, FLOOR_THICKNESS, 4.0),
 		Color(0.98, 0.95, 0.90)
 	)
 	_add_floor_slab(
 		Vector3(0.0, -FLOOR_THICKNESS * 0.5, -12.0),
-		Vector3(4.2, FLOOR_THICKNESS, 16.0),
+		Vector3(5.25, FLOOR_THICKNESS, 16.0),
 		Color(0.95, 0.89, 0.81)
 	)
 	_add_floor_slab(
 		Vector3(0.0, -FLOOR_THICKNESS * 0.5, -22.0),
-		Vector3(8.0, FLOOR_THICKNESS, 4.0),
+		Vector3(10.0, FLOOR_THICKNESS, 4.0),
 		Color(0.98, 0.95, 0.90)
 	)
 	# Visual hazard edge trim (non-blocking height)
 	if DisplayServer.get_name() != "headless":
 		var trim_mat := MaterialLibrary.make_frosted_acrylic_material(Color(1.0, 0.58, 0.14, 0.86))
-		for side in [-2.04, 2.04]:
+		for side in [-2.55, 2.55]:
 			var trim := MeshInstance3D.new()
 			var bm := BoxMesh.new()
 			bm.size = Vector3(0.12, 0.06, 16.0)
@@ -321,16 +404,16 @@ func _build_narrow_bridge() -> void:
 func _build_split_path() -> void:
 	_add_floor_slab(
 		Vector3(0.0, -FLOOR_THICKNESS * 0.5, -length * 0.5),
-		Vector3(STANDARD_WIDTH + 1.2, FLOOR_THICKNESS, length),
+		Vector3(STANDARD_WIDTH + 1.5, FLOOR_THICKNESS, length),
 		Color(0.99, 0.96, 0.92)
 	)
 	var rail_col := Color(0.25, 0.82, 0.96)
-	_add_guard_rail(Vector3(-5.8, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
-	_add_guard_rail(Vector3(5.8, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
+	_add_guard_rail(Vector3(-7.2, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
+	_add_guard_rail(Vector3(7.2, 0.55, -length * 0.5), Vector3(0.4, 1.1, length), rail_col)
 	# Central frosted amber acrylic divider island with bolted FIXED flange stanchion
 	_add_guard_rail(
 		Vector3(0.0, 0.65, -length * 0.5),
-		Vector3(1.4, 1.3, 20.0),
+		Vector3(1.6, 1.3, 20.0),
 		Color(0.96, 0.48, 0.24),
 		0.0,
 		true
@@ -345,16 +428,16 @@ func _build_ramp_gap() -> void:
 		Color(0.99, 0.96, 0.92)
 	)
 	# Central launch ramp [-8 .. -14], flush at Z=-8 (y=0) rising cleanly to y=+1.85m at Z=-14
-	_add_sloped_wave_segment(5.2, 0.46, 0.0, -8.0, 1.85, -14.0, Color(1.02, 0.94, 0.84))
+	_add_sloped_wave_segment(6.5, 0.46, 0.0, -8.0, 1.85, -14.0, Color(1.02, 0.94, 0.84))
 	# Auxiliary side bridges spanning [-8 .. -20] so low-speed balls can bypass chasm
 	_add_floor_slab(
-		Vector3(-4.1, -FLOOR_THICKNESS * 0.5, -14.0),
-		Vector3(1.8, FLOOR_THICKNESS, 12.0),
+		Vector3(-5.125, -FLOOR_THICKNESS * 0.5, -14.0),
+		Vector3(2.25, FLOOR_THICKNESS, 12.0),
 		Color(0.95, 0.90, 0.83)
 	)
 	_add_floor_slab(
-		Vector3(4.1, -FLOOR_THICKNESS * 0.5, -14.0),
-		Vector3(1.8, FLOOR_THICKNESS, 12.0),
+		Vector3(5.125, -FLOOR_THICKNESS * 0.5, -14.0),
+		Vector3(2.25, FLOOR_THICKNESS, 12.0),
 		Color(0.95, 0.90, 0.83)
 	)
 	# Landing deck [-20 .. -28]
@@ -364,8 +447,8 @@ func _build_ramp_gap() -> void:
 		Color(0.99, 0.96, 0.92)
 	)
 	var rail_col := Color(0.28, 0.78, 1.0)
-	_add_guard_rail(Vector3(-5.2, 0.85, -length * 0.5), Vector3(0.4, 1.7, length), rail_col)
-	_add_guard_rail(Vector3(5.2, 0.85, -length * 0.5), Vector3(0.4, 1.7, length), rail_col)
+	_add_guard_rail(Vector3(-6.45, 0.85, -length * 0.5), Vector3(0.4, 1.7, length), rail_col)
+	_add_guard_rail(Vector3(6.45, 0.85, -length * 0.5), Vector3(0.4, 1.7, length), rail_col)
 
 
 func _build_pinball_alley() -> void:
@@ -374,10 +457,10 @@ func _build_pinball_alley() -> void:
 		Vector3(STANDARD_WIDTH, FLOOR_THICKNESS, length),
 		Color(0.99, 0.95, 0.91)
 	)
-	_add_speed_stripes(length, 4.0)
+	_add_speed_stripes(length, 5.0)
 	var rail_col := Color(0.95, 0.36, 0.76)
-	_add_guard_rail(Vector3(-5.2, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
-	_add_guard_rail(Vector3(5.2, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
+	_add_guard_rail(Vector3(-6.45, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
+	_add_guard_rail(Vector3(6.45, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
 
 
 func _build_funnel_gauntlet() -> void:
@@ -387,8 +470,8 @@ func _build_funnel_gauntlet() -> void:
 		Color(0.97, 0.93, 0.88)
 	)
 	var rail_col := Color(1.0, 0.38, 0.24)
-	_add_guard_rail(Vector3(-5.2, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
-	_add_guard_rail(Vector3(5.2, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
+	_add_guard_rail(Vector3(-6.45, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
+	_add_guard_rail(Vector3(6.45, 0.65, -length * 0.5), Vector3(0.45, 1.3, length), rail_col)
 	# Angled inner frosted acrylic funnel walls with bolted flange bases
-	_add_guard_rail(Vector3(-3.8, 0.55, -10.0), Vector3(0.4, 1.1, 9.0), rail_col, -10.0, true)
-	_add_guard_rail(Vector3(3.8, 0.55, -10.0), Vector3(0.4, 1.1, 9.0), rail_col, 10.0, true)
+	_add_guard_rail(Vector3(-4.75, 0.55, -10.0), Vector3(0.4, 1.1, 9.0), rail_col, -10.0, true)
+	_add_guard_rail(Vector3(4.75, 0.55, -10.0), Vector3(0.4, 1.1, 9.0), rail_col, 10.0, true)

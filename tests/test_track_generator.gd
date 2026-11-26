@@ -208,11 +208,85 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 
 	assert_true(wave_chunk.has_method("add_side_launch_ramp"), "TrackChunkBase exposes add_side_launch_ramp()")
 	if wave_chunk.has_method("add_side_launch_ramp"):
-		var ramp = wave_chunk.add_side_launch_ramp(Vector3(3.2, 0.0, -14.0), 2.4)
+		var ramp = wave_chunk.add_side_launch_ramp(Vector3(3.2, 0.0, -14.0))
 		assert_true(ramp is StaticBody3D, "add_side_launch_ramp returns StaticBody3D")
 		if ramp is StaticBody3D:
 			assert_approx(ramp.rotation_degrees.x, 16.0, 0.05, "Side launch ramp pitches upward at +16.0°")
 			assert_eq(bool(ramp.get_meta("is_anchored_fixed", false)), true, "Side launch ramp carries anchored flange base meta")
+			for rc in ramp.get_children():
+				if rc is CollisionShape3D and rc.shape is BoxShape3D:
+					assert_approx((rc.shape as BoxShape3D).size.x, 3.0, 0.02, "Side launch ramp default width widened +25% to 3.0m")
+
+	assert_approx(float(chunk_script.STANDARD_WIDTH), 12.5, 0.01, "TrackChunkBase.STANDARD_WIDTH widened +25% to 12.5m")
+
+	var nb_chunk = chunk_script.new()
+	root.add_child(nb_chunk)
+	nb_chunk.build_chunk("NarrowBridge", -10.0)
+	var found_nb_span := false
+	for child in nb_chunk.get_children():
+		if child is StaticBody3D and not child.is_in_group("track_rail"):
+			for gc in child.get_children():
+				if gc is CollisionShape3D and gc.shape is BoxShape3D:
+					var bsz: Vector3 = (gc.shape as BoxShape3D).size
+					if absf(bsz.z - 16.0) < 0.1:
+						assert_approx(bsz.x, 5.25, 0.02, "NarrowBridge central span widened +25% to 5.25m")
+						found_nb_span = true
+	assert_true(found_nb_span, "NarrowBridge builds 16m central bridge slab")
+
+	var sp_chunk = chunk_script.new()
+	root.add_child(sp_chunk)
+	sp_chunk.build_chunk("SplitPath", -10.0)
+	var found_sp_floor := false
+	for child in sp_chunk.get_children():
+		if child is StaticBody3D and not child.is_in_group("track_rail"):
+			for gc in child.get_children():
+				if gc is CollisionShape3D and gc.shape is BoxShape3D:
+					assert_approx((gc.shape as BoxShape3D).size.x, 14.0, 0.02, "SplitPath total width widened +25% to 14.0m")
+					found_sp_floor = true
+	assert_true(found_sp_floor, "SplitPath builds 14.0m wide floor slab")
+
+	var rg_chunk = chunk_script.new()
+	root.add_child(rg_chunk)
+	rg_chunk.build_chunk("RampGap", -10.0)
+	var found_rg_ramp := false
+	var found_rg_side := false
+	for child in rg_chunk.get_children():
+		if child is StaticBody3D and not child.is_in_group("track_rail"):
+			for gc in child.get_children():
+				if gc is CollisionShape3D and gc.shape is BoxShape3D:
+					var rsz: Vector3 = (gc.shape as BoxShape3D).size
+					if absf(rsz.y - 0.46) < 0.02:
+						assert_approx(rsz.x, 6.5, 0.02, "RampGap central launch ramp widened +25% to 6.5m")
+						found_rg_ramp = true
+					elif absf(rsz.z - 12.0) < 0.1:
+						assert_approx(rsz.x, 2.25, 0.02, "RampGap auxiliary side bridge widened +25% to 2.25m")
+						assert_approx(absf((child as StaticBody3D).position.x), 5.125, 0.02, "RampGap side bridge positioned at ±5.125m")
+						found_rg_side = true
+	assert_true(found_rg_ramp and found_rg_side, "RampGap builds widened central launch ramp and side bridges")
+
+	assert_true(wave_chunk.has_method("add_sky_platform"), "TrackChunkBase exposes add_sky_platform()")
+	if wave_chunk.has_method("add_sky_platform"):
+		var sky_flat = wave_chunk.add_sky_platform(Vector3(0.0, 5.0, -5.0))
+		assert_true(sky_flat is StaticBody3D, "add_sky_platform default call returns StaticBody3D")
+		if sky_flat is StaticBody3D:
+			var flat_cols := 0
+			for fc in sky_flat.get_children():
+				if fc is CollisionShape3D and fc.shape is BoxShape3D:
+					flat_cols += 1
+					assert_approx((fc.shape as BoxShape3D).size.x, 3.8, 0.02, "SkyPlatform default width is 3.8m")
+					assert_approx((fc.shape as BoxShape3D).size.z, 11.5, 0.02, "SkyPlatform default length is 11.5m")
+			assert_eq(flat_cols, 1, "SkyPlatform without end kick attaches 1 main deck CollisionShape3D")
+
+		var sky_deck = wave_chunk.add_sky_platform(Vector3(0.0, 5.0, -15.0), Vector3(3.8, 0.34, 11.5), true)
+		assert_true(sky_deck is StaticBody3D, "add_sky_platform returns StaticBody3D")
+		if sky_deck is StaticBody3D:
+			assert_true(sky_deck.is_in_group("sky_platform"), "SkyPlatform belongs to group 'sky_platform'")
+			assert_eq(bool(sky_deck.get_meta("is_anchored_fixed", false)), true, "SkyPlatform sets is_anchored_fixed meta")
+			var col_count := 0
+			for sc in sky_deck.get_children():
+				if sc is CollisionShape3D:
+					col_count += 1
+			assert_eq(col_count, 2, "SkyPlatform with_end_kick attaches main deck + angled kick lip CollisionShape3D")
 
 	# 2. Generated tracks include SpringPad, AerialBonusRing, AerialBlocker, and mixed crate tiers on Level 2+
 	var gen = gen_script.new()

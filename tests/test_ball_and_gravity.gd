@@ -192,8 +192,8 @@ func _test_chase_camera_zero_roll_and_dynamic_fov() -> void:
 	var cam = cam_script.new()
 	assert_approx(cam.ROLL_FACTOR, 0.0, 0.0001, "ChaseCamera3D ROLL_FACTOR is 0.0")
 	assert_approx(cam.BASE_PITCH_DEG, -27.0, 0.01, "ChaseCamera3D BASE_PITCH_DEG is -27.0")
-	assert_approx(cam.FOLLOW_OFFSET.y, 5.2, 0.01, "ChaseCamera3D FOLLOW_OFFSET.y is 5.2")
-	assert_approx(cam.FOLLOW_OFFSET.z, 8.2, 0.01, "ChaseCamera3D FOLLOW_OFFSET.z is 8.2")
+	assert_approx(cam.FOLLOW_OFFSET.y, 5.6, 0.01, "ChaseCamera3D FOLLOW_OFFSET.y is 5.6")
+	assert_approx(cam.FOLLOW_OFFSET.z, 8.8, 0.01, "ChaseCamera3D FOLLOW_OFFSET.z is 8.8")
 
 	cam.snap_to_target(Vector3.ZERO)
 	for _i in range(30):

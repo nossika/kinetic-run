@@ -1,7 +1,7 @@
 class_name ChaseCamera3D
 extends Camera3D
 
-const FOLLOW_OFFSET := Vector3(0.0, 5.2, 8.2)
+const FOLLOW_OFFSET := Vector3(0.0, 5.6, 8.8)
 const BASE_PITCH_DEG: float = -27.0
 const ROLL_FACTOR: float = 0.0
 const BASE_FOV: float = 65.0
