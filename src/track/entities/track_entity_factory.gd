@@ -2,15 +2,22 @@ class_name TrackEntityFactory
 extends RefCounted
 
 
-static func create_crate(pos: Vector3, tier: String = "light") -> CrateObstacle:
+static func create_crate(pos: Vector3, tier: String = "light", yaw_deg: float = 0.0) -> CrateObstacle:
 	var n := CrateObstacle.new()
 	n.configure_tier(tier)
 	n.position = pos
+	n.rotation_degrees.y = yaw_deg
 	return n
 
 
-static func create_heavy_crate(pos: Vector3) -> CrateObstacle:
-	return create_crate(pos, "medium")
+static func create_heavy_crate(pos: Vector3, yaw_deg: float = 0.0) -> CrateObstacle:
+	return create_crate(pos, "medium", yaw_deg)
+
+
+static func create_wooden_pin(pos: Vector3) -> WoodenPin:
+	var n := WoodenPin.new()
+	n.position = pos
+	return n
 
 
 static func create_slime_zone(pos: Vector3, size: Vector2 = Vector2(4.0, 6.0)) -> SlimeZone:

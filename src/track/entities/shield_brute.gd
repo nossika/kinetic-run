@@ -1,16 +1,14 @@
 class_name ShieldBrute
 extends RigidBody3D
 
-const SMASH_MOMENTUM: float = 42.0
-const SPEED_LOSS_RATIO: float = 0.15
+const ABYSS_LOCAL_Y: float = -28.0
+const MAX_SHOCKWAVE_SPEED: float = 32.0
 
-var smash_momentum: float = SMASH_MOMENTUM
 var weight_label: String = "20kg"
-var is_smashed: bool = false
-
-var _ttl: float = 0.0
-var _hit_cooldown: float = 0.0
-var _sensor: Area3D = null
+var min_smash_impulse: float = 4.5
+var is_dislodged: bool = false
+var has_yielded_smash: bool = false
+var _queued_shockwave_dv: float = 0.0
 
 
 func _init() -> void:
@@ -20,10 +18,10 @@ func _init() -> void:
 
 func _ready() -> void:
 	mass = 20.0
-	physics_material_override = MaterialLibrary.high_friction_physics(0.94, 0.06)
+	physics_material_override = MaterialLibrary.high_friction_physics(0.86, 0.12)
 	gravity_scale = 1.0
-	linear_damp = 2.0
-	angular_damp = 3.0
+	linear_damp = 0.16 if is_dislodged else 1.2
+	angular_damp = 0.28 if is_dislodged else 1.8
 	contact_monitor = true
 	max_contacts_reported = 4
 
@@ -36,15 +34,8 @@ func _ready() -> void:
 
 	_build_weight_visuals()
 	MaterialLibrary.attach_weight_labels(self, "20kg", Vector3(1.45, 1.45, 1.45), Color(0.96, 0.97, 1.0))
-
-	_sensor = Area3D.new()
-	var s_col := CollisionShape3D.new()
-	var b_shape := BoxShape3D.new()
-	b_shape.size = Vector3(1.70, 1.60, 1.65)
-	s_col.shape = b_shape
-	_sensor.add_child(s_col)
-	_sensor.body_entered.connect(_on_body_entered)
-	add_child(_sensor)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
 
 
 func _build_weight_visuals() -> void:
@@ -103,48 +94,60 @@ func _build_weight_visuals() -> void:
 	add_child(grip_inst)
 
 
-func _physics_process(delta: float) -> void:
-	_hit_cooldown = maxf(0.0, _hit_cooldown - delta)
-	if is_smashed:
-		_ttl -= delta
-		if _ttl <= 0.0:
-			queue_free()
+func _physics_process(_delta: float) -> void:
+	_queued_shockwave_dv = 0.0
+	if not is_dislodged and (linear_velocity.length_squared() > 0.35 or angular_velocity.length_squared() > 0.45):
+		dislodge()
+	if get_parent() is Node3D and position.y < ABYSS_LOCAL_Y:
+		queue_free()
+
+
+func dislodge() -> void:
+	if is_dislodged:
+		return
+	is_dislodged = true
+	sleeping = false
+	linear_damp = 0.16
+	angular_damp = 0.28
+
+
+func on_ball_physical_impact(impulse_mag: float) -> bool:
+	dislodge()
+	if not has_yielded_smash and impulse_mag >= min_smash_impulse:
+		has_yielded_smash = true
+		return true
+	return false
 
 
 func _on_body_entered(body: Node) -> void:
-	if body is PlayerBall3D:
-		interact_with_ball(body as PlayerBall3D)
-
-
-func _resolve_uphill_dir(ball: PlayerBall3D) -> Vector3:
-	if ball != null and ball.has_valid_track_reference():
-		var tb := ball.get_track_basis()
-		if tb.z.length_squared() > 0.0001:
-			return tb.z.normalized()
-	var parent_3d := get_parent() as Node3D
-	if parent_3d != null:
-		var pb := parent_3d.global_transform.basis if parent_3d.is_inside_tree() else parent_3d.transform.basis
-		if pb.z.length_squared() > 0.0001:
-			return pb.z.normalized()
-	return Vector3.BACK
-
-
-func interact_with_ball(ball: PlayerBall3D) -> void:
-	if is_smashed or ball == null or ball.is_respawning:
+	if not (body is PlayerBall3D):
 		return
-	var self_pos := global_position if is_inside_tree() else position
-	if ball.get_current_momentum() >= SMASH_MOMENTUM:
-		_smash(Vector3(ball.linear_velocity.x * 0.25, 10.0, -22.0))
-		ball.notify_smash_target(self_pos, SPEED_LOSS_RATIO, 0)
-	elif _hit_cooldown <= 0.0:
-		_hit_cooldown = 0.28
-		var uphill_dir := _resolve_uphill_dir(ball)
-		ball.linear_velocity *= 0.35
-		if ball.is_inside_tree():
-			ball.global_position += uphill_dir * 0.35
-		else:
-			ball.position += uphill_dir * 0.35
-		ball.notify_wall_or_bumper_bounce(uphill_dir, self_pos, 0.0)
+	var ball := body as PlayerBall3D
+	if ball.is_respawning or ball.has_method("notify_obstacle_impact"):
+		return
+	var pre_vel := ball._saved_velocity_pre_step if ball._saved_velocity_pre_step.length_squared() > 0.001 else ball.linear_velocity
+	var post_vel := ball.linear_velocity
+	var impulse_est := ball.mass * (post_vel - pre_vel).length()
+	if impulse_est < 0.05:
+		var mu := (ball.mass * mass) / maxf(0.1, ball.mass + mass)
+		impulse_est = mu * (pre_vel - linear_velocity).length()
+	if ball.synergy_bus != null:
+		var loss_mult := ball.synergy_bus.stats.get_stat("smash_speed_loss_mult")
+		if loss_mult < 0.999:
+			var fwd_dir := -ball.get_track_basis().z.normalized()
+			var dv_fwd := pre_vel.dot(fwd_dir) - post_vel.dot(fwd_dir)
+			if dv_fwd > 0.2:
+				var restored := post_vel + fwd_dir * (dv_fwd * (1.0 - clampf(loss_mult, 0.0, 1.0)))
+				var max_spd := pre_vel.length()
+				if restored.length() > max_spd and max_spd > 0.001:
+					restored = restored.normalized() * max_spd
+				ball.linear_velocity = restored
+	if on_ball_physical_impact(impulse_est):
+		var self_pos := global_position if is_inside_tree() else position
+		var saved_pre := ball._saved_velocity_pre_step
+		ball._saved_velocity_pre_step = ball.linear_velocity
+		ball.notify_smash_target(self_pos, 0.0, 0)
+		ball._saved_velocity_pre_step = ball.linear_velocity if ball.linear_velocity.length() > saved_pre.length() else saved_pre
 
 
 func apply_shockwave(
@@ -154,25 +157,29 @@ func apply_shockwave(
 	chain_depth: int,
 	ball: PlayerBall3D
 ) -> void:
-	if is_smashed:
+	var self_pos := global_position if is_inside_tree() else position
+	var dist := self_pos.distance_to(origin)
+	if dist > radius or force < 6.0:
 		return
-	if global_position.distance_to(origin) <= radius and force >= 10.0:
-		var dir := (global_position - origin).normalized()
-		if dir.length_squared() < 0.01:
-			dir = Vector3(0.0, 1.0, -1.0).normalized()
-		_smash(dir * 16.0 + Vector3(0.0, 9.0, -8.0))
+	dislodge()
+	var falloff := clampf(1.0 - (dist / (radius * 1.15)), 0.25, 1.0)
+	var radial := self_pos - origin
+	radial.y = 0.0
+	var dir := radial.normalized() if radial.length_squared() > 0.001 else Vector3(0.25, 0.0, -1.0).normalized()
+	var up_dir := global_transform.basis.y.normalized() if is_inside_tree() else Vector3.UP
+	var impulse_mag := force * 0.85 * falloff
+	var impulse_vec := (dir + up_dir * 0.42).normalized() * impulse_mag
+	var budget_dv := maxf(0.0, MAX_SHOCKWAVE_SPEED - linear_velocity.length() - _queued_shockwave_dv)
+	var clamped_vec := impulse_vec.limit_length(budget_dv * mass)
+	if clamped_vec.length_squared() > 0.0001:
+		apply_impulse(clamped_vec, up_dir * 0.18)
+		_queued_shockwave_dv += clamped_vec.length() / maxf(0.05, mass)
+	if linear_velocity.length() > MAX_SHOCKWAVE_SPEED:
+		linear_velocity = linear_velocity.normalized() * MAX_SHOCKWAVE_SPEED
+	if not has_yielded_smash and impulse_mag >= min_smash_impulse:
+		has_yielded_smash = true
 		if ball != null:
-			ball.notify_smash_target(global_position, 0.0, chain_depth)
-
-
-func _smash(vel: Vector3) -> void:
-	is_smashed = true
-	_ttl = 0.75
-	collision_layer = 2
-	collision_mask = 0
-	if _sensor != null:
-		_sensor.set_deferred("monitoring", false)
-	gravity_scale = 1.0
-	linear_damp = 0.1
-	linear_velocity = vel
-	angular_velocity = Vector3(6.0, 5.0, 8.0)
+			if ball.has_method("notify_obstacle_impact"):
+				ball.notify_obstacle_impact(self_pos, chain_depth)
+			else:
+				ball.notify_smash_target(self_pos, 0.0, chain_depth)
