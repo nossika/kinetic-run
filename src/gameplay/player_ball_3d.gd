@@ -254,41 +254,66 @@ func _rebuild_collision_shape_for_radius() -> void:
 			_collision_shape.shape = _sphere_shape
 
 
-func _rebuild_visual_mesh_for_shape() -> void:
-	if _core_mesh == null or DisplayServer.get_name() == "headless":
+static func populate_ball_visual(
+	mesh_inst: MeshInstance3D,
+	def: StarterBallDefinition,
+	shape_override: String = ""
+) -> void:
+	if mesh_inst == null:
 		return
-	var livery_path := MaterialLibrary.TEX_BALL_LIVERY_BEACH
-	var tint := Color.WHITE
-	if current_starter_ball != null:
-		livery_path = current_starter_ball.livery_texture_path
-		tint = current_starter_ball.primary_tint
-	var ball_mat := MaterialLibrary.make_starter_ball_material(livery_path, tint)
+	var shape_t := shape_override
+	if shape_t == "" and def != null:
+		shape_t = def.shape_type
+	if shape_t == "":
+		shape_t = "sphere"
 
-	match current_shape_type:
+	var is_headless := DisplayServer.get_name() == "headless"
+	var ball_mat: StandardMaterial3D = null
+	if not is_headless:
+		var livery_path := MaterialLibrary.TEX_BALL_LIVERY_BEACH
+		var tint := Color.WHITE
+		if def != null:
+			livery_path = def.livery_texture_path
+			tint = def.primary_tint
+		ball_mat = MaterialLibrary.make_starter_ball_material(livery_path, tint)
+
+	var built_mesh: Mesh = null
+	match shape_t:
 		"rugby":
-			_core_mesh.rotation_degrees = Vector3.ZERO
-			var ellip := ClayMeshBuilder.make_ellipsoid_mesh(
+			mesh_inst.rotation_degrees = Vector3.ZERO
+			built_mesh = ClayMeshBuilder.make_ellipsoid_mesh(
 				Vector3(StatSheet.BASE_RADIUS * 1.32, StatSheet.BASE_RADIUS, StatSheet.BASE_RADIUS),
 				32,
-				18
+				18,
+				true
 			)
-			ClayMeshBuilder.assign_mesh(_core_mesh, ellip, ball_mat)
 		"capsule_roller":
-			_core_mesh.rotation_degrees = Vector3(0.0, 0.0, 90.0)
+			mesh_inst.rotation_degrees = Vector3(0.0, 0.0, 90.0)
 			var cm := CapsuleMesh.new()
 			cm.radius = StatSheet.BASE_RADIUS
 			cm.height = StatSheet.BASE_RADIUS * 2.52
 			cm.radial_segments = 32
 			cm.rings = 12
-			ClayMeshBuilder.assign_mesh(_core_mesh, cm, ball_mat)
+			built_mesh = cm
 		_:
-			_core_mesh.rotation_degrees = Vector3.ZERO
+			mesh_inst.rotation_degrees = Vector3.ZERO
 			var sm := SphereMesh.new()
 			sm.radius = StatSheet.BASE_RADIUS
 			sm.height = StatSheet.BASE_RADIUS * 2.0
 			sm.radial_segments = 32
 			sm.rings = 20
-			ClayMeshBuilder.assign_mesh(_core_mesh, sm, ball_mat)
+			built_mesh = sm
+
+	if is_headless:
+		mesh_inst.mesh = built_mesh
+	else:
+		ClayMeshBuilder.assign_mesh(mesh_inst, built_mesh, ball_mat)
+
+
+func _rebuild_visual_mesh_for_shape() -> void:
+	if _core_mesh == null:
+		return
+	populate_ball_visual(_core_mesh, current_starter_ball, current_shape_type)
 
 
 func _build_hud_ring_visuals() -> void:

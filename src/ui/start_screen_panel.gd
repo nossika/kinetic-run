@@ -9,57 +9,48 @@ var _seed_input: LineEdit = null
 var _cards_row: HBoxContainer = null
 var _suppress_seed_signal: bool = false
 var _current_balls: Array[StarterBallDefinition] = []
+var _preview_widgets: Array[StarterBallPreview3D] = []
 
 
-static func _make_ball_preview_widget(def: StarterBallDefinition) -> Control:
-	var holder := CenterContainer.new()
-	holder.custom_minimum_size = Vector2(0.0, 92.0)
+static func _make_ball_preview_stage(def: StarterBallDefinition, slot_idx: int) -> Dictionary:
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = Vector2(284.0, 150.0)
+	var stage_sb := StyleBoxFlat.new()
+	stage_sb.bg_color = Color(0.73, 0.88, 0.98, 0.92)
+	stage_sb.border_color = (def.accent_color.darkened(0.10) if def != null else Color(0.45, 0.65, 0.85))
+	stage_sb.border_color.a = 0.55
+	stage_sb.set_border_width_all(2)
+	stage_sb.set_corner_radius_all(16)
+	stage_sb.content_margin_left = 4
+	stage_sb.content_margin_right = 4
+	stage_sb.content_margin_top = 3
+	stage_sb.content_margin_bottom = 3
+	frame.add_theme_stylebox_override("panel", stage_sb)
 
-	var r_scale := clampf((def.radius if def != null else 0.55) / 0.58, 0.82, 1.18)
-	var shape_t := def.shape_type if def != null else "sphere"
-	var w := 68.0 * r_scale
-	var h := 68.0 * r_scale
-	var radius_px := int(round(h * 0.5))
+	var preview := StarterBallPreview3D.new()
+	var phase_offsets: Array[float] = [0.15, 0.85, -0.45]
+	var phase := phase_offsets[slot_idx % phase_offsets.size()]
+	preview.setup_ball(def, phase)
+	frame.add_child(preview)
 
-	if shape_t == "rugby":
-		w = 94.0 * r_scale
-		h = 62.0 * r_scale
-		radius_px = int(round(h * 0.5))
-	elif shape_t == "capsule_roller":
-		w = 100.0 * r_scale
-		h = 56.0 * r_scale
-		radius_px = int(round(h * 0.5))
-
-	var mask_panel := Panel.new()
-	mask_panel.custom_minimum_size = Vector2(w, h)
-	mask_panel.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
-	var mask_sb := StyleBoxFlat.new()
-	mask_sb.bg_color = def.accent_color if def != null else Color(0.92, 0.36, 0.30)
-	mask_sb.set_corner_radius_all(radius_px)
-	mask_sb.shadow_color = Color(0.18, 0.11, 0.06, 0.22)
-	mask_sb.shadow_size = 5
-	mask_sb.shadow_offset = Vector2(0.0, 3.0)
-	mask_panel.add_theme_stylebox_override("panel", mask_sb)
-
-	if DisplayServer.get_name() != "headless" and def != null:
-		var tex := load(def.livery_texture_path) as Texture2D
-		if tex != null:
-			var tr := TextureRect.new()
-			tr.texture = tex
-			tr.modulate = def.primary_tint
-			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-			tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			mask_panel.add_child(tr)
-
-	holder.add_child(mask_panel)
-	return holder
+	return {"frame": frame, "preview": preview}
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UiTheme.build_theme()
+	visibility_changed.connect(_on_visibility_changed)
 	_build_ui()
+
+
+func _on_visibility_changed() -> void:
+	for prev in _preview_widgets:
+		if prev != null and is_instance_valid(prev):
+			prev.set_preview_active(visible)
+
+
+func get_preview_widgets() -> Array[StarterBallPreview3D]:
+	return _preview_widgets
 
 
 func _build_ui() -> void:
@@ -109,7 +100,7 @@ func _build_ui() -> void:
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", UiTheme.INK_MUTED)
-	sub.text = "修改种子会同步刷新下方 3 颗候选球的形状、属性与涂装  ·  点击卡片或按 [1] [2] [3] 立即发车"
+	sub.text = "修改种子会同步刷新下方 3 颗候选球的 3D 形状、尺寸与涂装  ·  悬停卡片加速滚动，按 [1] [2] [3] 立即发车"
 	header_vb.add_child(sub)
 
 	var seed_row := HBoxContainer.new()
@@ -161,6 +152,7 @@ func refresh_options(seed_text: String, balls: Array[StarterBallDefinition]) -> 
 
 	if _cards_row == null:
 		return
+	_preview_widgets.clear()
 	for child in _cards_row.get_children():
 		child.queue_free()
 
@@ -172,7 +164,7 @@ func refresh_options(seed_text: String, balls: Array[StarterBallDefinition]) -> 
 
 func _build_ball_card(idx: int, def: StarterBallDefinition) -> PanelContainer:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(316.0, 382.0)
+	card.custom_minimum_size = Vector2(320.0, 434.0)
 	var border_col := def.accent_color.darkened(0.18)
 	border_col.a = 0.96
 	card.add_theme_stylebox_override(
@@ -184,7 +176,15 @@ func _build_ball_card(idx: int, def: StarterBallDefinition) -> PanelContainer:
 	vb.add_theme_constant_override("separation", 7)
 	card.add_child(vb)
 
-	vb.add_child(_make_ball_preview_widget(def))
+	var stage_bundle := _make_ball_preview_stage(def, idx)
+	var stage_frame := stage_bundle["frame"] as PanelContainer
+	var preview := stage_bundle["preview"] as StarterBallPreview3D
+	preview.set_preview_active(visible)
+	_preview_widgets.append(preview)
+	vb.add_child(stage_frame)
+
+	card.mouse_entered.connect(func() -> void: preview.set_hovered(true))
+	card.mouse_exited.connect(func() -> void: preview.set_hovered(false))
 
 	var name_lbl := Label.new()
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -213,6 +213,8 @@ func _build_ball_card(idx: int, def: StarterBallDefinition) -> PanelContainer:
 	var pick_btn := Button.new()
 	pick_btn.text = "选它出发 [%d]" % (idx + 1)
 	pick_btn.custom_minimum_size = Vector2(0.0, 42.0)
+	pick_btn.mouse_entered.connect(func() -> void: preview.set_hovered(true))
+	pick_btn.mouse_exited.connect(func() -> void: preview.set_hovered(false))
 	pick_btn.pressed.connect(func() -> void: _pick(idx))
 	vb.add_child(pick_btn)
 

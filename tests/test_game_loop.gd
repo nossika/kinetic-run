@@ -52,11 +52,44 @@ func _test_main_scene_boots_and_rolls_forward() -> void:
 		"Re-entering same seed on StartScreen reproduces identical starter balls"
 	)
 
+	# Verify StartScreenPanel renders real-time 3D SubViewport previews for all 3 starter balls
+	var has_3d_previews: bool = world.start_screen_panel.has_method("get_preview_widgets")
+	assert_true(has_3d_previews, "StartScreenPanel exposes get_preview_widgets() for real 3D starter ball previews")
+	var previews: Array = world.start_screen_panel.call("get_preview_widgets") if has_3d_previews else []
+	assert_eq(previews.size(), 3, "StartScreenPanel creates 3 real-time 3D starter ball preview viewports")
+	for idx in range(previews.size()):
+		var prev := previews[idx] as SubViewportContainer
+		var ball_def: StarterBallDefinition = world.current_starter_balls[idx]
+		assert_true(prev != null, "Card %d preview is a SubViewportContainer" % idx)
+		if prev != null:
+			var sub_vp := prev.get_node_or_null("PreviewViewport") as SubViewport
+			assert_true(sub_vp != null and sub_vp.own_world_3d, "Card %d preview uses isolated own_world_3d SubViewport" % idx)
+			var mesh_inst: MeshInstance3D = prev.call("get_ball_mesh_instance")
+			assert_true(mesh_inst != null and mesh_inst.mesh != null, "Card %d preview builds real 3D ball Mesh" % idx)
+			if mesh_inst != null and mesh_inst.mesh != null:
+				if ball_def.shape_type == "sphere":
+					assert_true(mesh_inst.mesh is SphereMesh, "Sphere starter ball preview uses SphereMesh")
+				elif ball_def.shape_type == "rugby":
+					assert_true(mesh_inst.mesh is ArrayMesh, "Rugby starter ball preview uses ellipsoid ArrayMesh")
+				elif ball_def.shape_type == "capsule_roller":
+					assert_true(mesh_inst.mesh is CapsuleMesh, "Capsule roller starter ball preview uses CapsuleMesh")
+			var expected_scale := ball_def.radius / StatSheet.BASE_RADIUS
+			assert_approx(float(prev.call("get_ball_scale_ratio")), expected_scale, 0.01, "Card %d 3D preview scales proportionally to ball radius" % idx)
+			assert_true(bool(prev.call("is_preview_active")), "Card %d 3D preview is active while StartScreenPanel is visible" % idx)
+			var roll_before: float = float(prev.call("get_roll_angle"))
+			prev.call("_advance_preview_anim", 0.30)
+			var roll_after: float = float(prev.call("get_roll_angle"))
+			assert_true(absf(roll_after - roll_before) > 0.3, "Card %d 3D preview continuously rolls forward" % idx)
+
 	# Selecting starter ball 1 launches RACING with that ball's physical attributes
 	var picked_ball = world.current_starter_balls[1]
 	world.select_starter_ball(1)
 	assert_eq(world.game_state, "RACING", "Selecting a starter ball enters RACING state")
 	assert_false(world.start_screen_panel.visible, "StartScreenPanel hides once RACING begins")
+	for idx in range(previews.size()):
+		var prev := previews[idx] as SubViewportContainer
+		if prev != null and is_instance_valid(prev):
+			assert_false(bool(prev.call("is_preview_active")), "Card %d 3D preview suspends rendering once RACING begins" % idx)
 	assert_true(world.hud_overlay.visible, "HudOverlay becomes visible in RACING")
 	assert_approx(world.player_ball.mass, picked_ball.mass, 0.01, "Selected starter ball mass applied to PlayerBall3D")
 	assert_approx(world.run_state.time_remaining, 30.0, 0.2, "RACING starts with ~30.0s countdown")
