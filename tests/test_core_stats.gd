@@ -9,6 +9,7 @@ func run() -> void:
 	_test_upgrade_catalog_persistent_impact_copy()
 	_test_material_library_metadata_and_friction()
 	_test_clay_mesh_builder_shapes_and_caching()
+	_test_storybook_ui_theme_styles()
 
 
 func _test_stat_sheet_defaults_and_clamping() -> void:
@@ -315,4 +316,19 @@ func _test_clay_mesh_builder_shapes_and_caching() -> void:
 	assert_true(eyes_root != null and host.get_node_or_null("ClayEyes") != null, "attach_clay_eyes mounts ClayEyes child node")
 	assert_true(eyes_root.get_child_count() >= 4, "ClayEyes includes left/right pupils, highlights, and blush")
 	host.free()
+
+
+func _test_storybook_ui_theme_styles() -> void:
+	var ui_script: GDScript = load("res://src/ui/ui_theme.gd")
+	assert_true(ui_script != null, "UiTheme script exists")
+	if ui_script == null:
+		return
+	var card_sb: StyleBoxFlat = ui_script.make_storybook_card_style()
+	assert_true(card_sb != null, "make_storybook_card_style returns StyleBoxFlat")
+	assert_gt(card_sb.bg_color.r, 0.85, "Storybook card background is warm light cream parchment")
+	assert_true(card_sb.corner_radius_top_left >= 16, "Storybook card uses generous rounded corners (>=16px)")
+	var theme_res: Theme = ui_script.build_theme()
+	assert_true(theme_res.has_stylebox("normal", "Button"), "UiTheme configures rounded warm Button stylebox")
+	assert_true(theme_res.has_stylebox("fill", "ProgressBar"), "UiTheme configures rounded sage ProgressBar fill")
+
 

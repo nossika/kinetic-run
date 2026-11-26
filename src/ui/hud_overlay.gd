@@ -12,6 +12,7 @@ var _speed_label: Label = null
 var _momentum_label: Label = null
 var _overload_label: Label = null
 var _progress_bar: ProgressBar = null
+var _respawn_pill: PanelContainer = null
 var _respawn_banner: Label = null
 var _controls_hint: Label = null
 var _upgrades_label: Label = null
@@ -42,25 +43,27 @@ func _ready() -> void:
 
 
 func _init_badge_styles() -> void:
-	_thrust_active_style = UiTheme.make_panel_style(
-		Color(0.06, 0.42, 0.58, 0.96),
-		Color(0.24, 0.96, 1.0, 1.0),
-		8,
+	_thrust_active_style = UiTheme.make_storybook_card_style(
+		Color(0.46, 0.82, 0.68, 0.96),
+		Color(0.28, 0.64, 0.50, 0.96),
+		12,
 		2
 	)
-	_thrust_active_style.content_margin_left = 10.0
-	_thrust_active_style.content_margin_right = 10.0
+	_thrust_active_style.shadow_size = 2
+	_thrust_active_style.content_margin_left = 11.0
+	_thrust_active_style.content_margin_right = 11.0
 	_thrust_active_style.content_margin_top = 4.0
 	_thrust_active_style.content_margin_bottom = 4.0
 
-	_thrust_idle_style = UiTheme.make_panel_style(
-		Color(0.08, 0.11, 0.17, 0.62),
-		Color(0.30, 0.38, 0.50, 0.45),
-		8,
+	_thrust_idle_style = UiTheme.make_storybook_card_style(
+		Color(0.93, 0.88, 0.79, 0.76),
+		Color(0.80, 0.70, 0.58, 0.55),
+		12,
 		1
 	)
-	_thrust_idle_style.content_margin_left = 10.0
-	_thrust_idle_style.content_margin_right = 10.0
+	_thrust_idle_style.shadow_size = 0
+	_thrust_idle_style.content_margin_left = 11.0
+	_thrust_idle_style.content_margin_right = 11.0
 	_thrust_idle_style.content_margin_top = 4.0
 	_thrust_idle_style.content_margin_bottom = 4.0
 
@@ -70,16 +73,16 @@ func _build_layout() -> void:
 	add_child(margin)
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
 	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.add_theme_constant_override("margin_bottom", 18)
 
 	var root_vbox := VBoxContainer.new()
 	root_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(root_vbox)
 
-	# 1. Top row: centered Timer/Thrust/Progress Panel + Seed Pill
+	# 1. Top row: centered warm parchment Timer/Progress Card + Seed Pill
 	var top_row := HBoxContainer.new()
 	top_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	top_row.add_theme_constant_override("separation", 12)
@@ -87,23 +90,23 @@ func _build_layout() -> void:
 	root_vbox.add_child(top_row)
 
 	var top_box := PanelContainer.new()
-	top_box.custom_minimum_size = Vector2(460.0, 0.0)
+	top_box.custom_minimum_size = Vector2(450.0, 0.0)
 	top_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top_box.add_theme_stylebox_override(
 		"panel",
-		UiTheme.make_panel_style(Color(0.07, 0.10, 0.17, 0.86), Color(0.22, 0.68, 1.0, 0.90))
+		UiTheme.make_storybook_card_style(UiTheme.CREAM_BG, UiTheme.WALNUT_BORDER, 20, 2)
 	)
 	top_row.add_child(top_box)
 
 	var top_vbox := VBoxContainer.new()
-	top_vbox.add_theme_constant_override("separation", 4)
+	top_vbox.add_theme_constant_override("separation", 5)
 	top_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top_box.add_child(top_vbox)
 
 	_level_label = Label.new()
 	_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_level_label.add_theme_font_size_override("font_size", 16)
-	_level_label.add_theme_color_override("font_color", Color(0.72, 0.90, 1.0))
+	_level_label.add_theme_font_size_override("font_size", 15)
+	_level_label.add_theme_color_override("font_color", UiTheme.INK_MUTED)
 	_level_label.text = "给我滚  ·  第 1 关  |  剩余距离 130 m"
 	top_vbox.add_child(_level_label)
 
@@ -120,15 +123,15 @@ func _build_layout() -> void:
 
 	_left_thrust_label = Label.new()
 	_left_thrust_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_left_thrust_label.add_theme_font_size_override("font_size", 15)
-	_left_thrust_label.text = "[ ◀ 左推 ]"
+	_left_thrust_label.add_theme_font_size_override("font_size", 14)
+	_left_thrust_label.text = "◀ 左推"
 	_left_thrust_badge.add_child(_left_thrust_label)
 
 	_timer_label = Label.new()
-	_timer_label.custom_minimum_size = Vector2(148.0, 0.0)
+	_timer_label.custom_minimum_size = Vector2(146.0, 0.0)
 	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_timer_label.add_theme_font_size_override("font_size", 34)
-	_timer_label.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
+	_timer_label.add_theme_font_size_override("font_size", 32)
+	_timer_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
 	_timer_label.text = "30.00 s"
 	timer_thrust_row.add_child(_timer_label)
 
@@ -139,8 +142,8 @@ func _build_layout() -> void:
 
 	_right_thrust_label = Label.new()
 	_right_thrust_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_right_thrust_label.add_theme_font_size_override("font_size", 15)
-	_right_thrust_label.text = "[ 右推 ▶ ]"
+	_right_thrust_label.add_theme_font_size_override("font_size", 14)
+	_right_thrust_label.text = "右推 ▶"
 	_right_thrust_badge.add_child(_right_thrust_label)
 
 	_progress_bar = ProgressBar.new()
@@ -157,7 +160,12 @@ func _build_layout() -> void:
 	seed_pill.mouse_filter = Control.MOUSE_FILTER_PASS
 	seed_pill.add_theme_stylebox_override(
 		"panel",
-		UiTheme.make_panel_style(Color(0.07, 0.10, 0.17, 0.86), Color(0.95, 0.76, 0.30, 0.88), 10, 2)
+		UiTheme.make_storybook_card_style(
+			Color(0.99, 0.96, 0.89, 0.92),
+			Color(0.84, 0.67, 0.42, 0.88),
+			18,
+			2
+		)
 	)
 	top_row.add_child(seed_pill)
 
@@ -167,45 +175,58 @@ func _build_layout() -> void:
 	seed_pill.add_child(seed_hbox)
 
 	_seed_label = Label.new()
-	_seed_label.add_theme_font_size_override("font_size", 15)
-	_seed_label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.62))
+	_seed_label.add_theme_font_size_override("font_size", 14)
+	_seed_label.add_theme_color_override("font_color", Color(0.46, 0.33, 0.18))
 	_seed_label.text = "种子: ------"
 	seed_hbox.add_child(_seed_label)
 
 	_seed_btn = Button.new()
-	_seed_btn.text = "填入种子 [N]"
+	_seed_btn.text = "换种子 [N]"
 	_seed_btn.focus_mode = Control.FOCUS_NONE
-	_seed_btn.custom_minimum_size = Vector2(108.0, 30.0)
+	_seed_btn.custom_minimum_size = Vector2(102.0, 30.0)
 	_seed_btn.add_theme_font_size_override("font_size", 14)
 	_seed_btn.pressed.connect(open_seed_dialog)
 	seed_hbox.add_child(_seed_btn)
 
-	# 2. Middle expanding area (holds centered Respawn alert banner when active)
+	# 2. Middle expanding area (holds soft rounded Respawn pill when active)
 	var mid_spacer := CenterContainer.new()
 	mid_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mid_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_vbox.add_child(mid_spacer)
 
+	_respawn_pill = PanelContainer.new()
+	_respawn_pill.visible = false
+	_respawn_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_respawn_pill.add_theme_stylebox_override(
+		"panel",
+		UiTheme.make_storybook_card_style(
+			Color(0.99, 0.94, 0.90, 0.95),
+			Color(0.88, 0.52, 0.42, 0.92),
+			20,
+			2
+		)
+	)
+	mid_spacer.add_child(_respawn_pill)
+
 	_respawn_banner = Label.new()
 	_respawn_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_respawn_banner.add_theme_font_size_override("font_size", 28)
-	_respawn_banner.add_theme_color_override("font_color", Color(1.0, 0.38, 0.24))
-	_respawn_banner.text = "坠出赛道！时空拉回中..."
-	_respawn_banner.visible = false
-	mid_spacer.add_child(_respawn_banner)
+	_respawn_banner.add_theme_font_size_override("font_size", 22)
+	_respawn_banner.add_theme_color_override("font_color", UiTheme.CORAL_ALERT)
+	_respawn_banner.text = "掉出跑道啦 · 轻柔拉回中..."
+	_respawn_pill.add_child(_respawn_banner)
 
-	# 3. Bottom row: Left Build/Controls Panel + Spacer + Right Speedometer Panel
+	# 3. Bottom row: Left Build/Controls Card + Spacer + Right Speedometer Card
 	var bottom_row := HBoxContainer.new()
 	bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_vbox.add_child(bottom_row)
 
 	var build_panel := PanelContainer.new()
-	build_panel.custom_minimum_size = Vector2(540.0, 0.0)
+	build_panel.custom_minimum_size = Vector2(510.0, 0.0)
 	build_panel.size_flags_vertical = Control.SIZE_SHRINK_END
 	build_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	build_panel.add_theme_stylebox_override(
 		"panel",
-		UiTheme.make_panel_style(Color(0.07, 0.10, 0.17, 0.84), Color(0.38, 0.54, 0.78, 0.82))
+		UiTheme.make_storybook_card_style(UiTheme.CREAM_BG, UiTheme.WALNUT_BORDER, 18, 2)
 	)
 	bottom_row.add_child(build_panel)
 
@@ -215,16 +236,16 @@ func _build_layout() -> void:
 	build_panel.add_child(b_vbox)
 
 	_controls_hint = Label.new()
-	_controls_hint.add_theme_font_size_override("font_size", 15)
-	_controls_hint.add_theme_color_override("font_color", Color(0.98, 0.91, 0.58))
-	_controls_hint.text = "操控：按住 [A / ←] 左推   按住 [D / →] 右推（松手即停 · 可借斜坡/弹簧腾空穿环）"
+	_controls_hint.add_theme_font_size_override("font_size", 14)
+	_controls_hint.add_theme_color_override("font_color", UiTheme.INK_MUTED)
+	_controls_hint.text = "操控：按住 [A / ←] 左推  ·  [D / →] 右推（松手即停 · 可借斜坡与弹簧跃向云台）"
 	b_vbox.add_child(_controls_hint)
 
 	_upgrades_label = Label.new()
 	_upgrades_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_upgrades_label.add_theme_font_size_override("font_size", 14)
-	_upgrades_label.add_theme_color_override("font_color", Color(0.78, 0.90, 1.0))
-	_upgrades_label.text = "当前构筑：初始钨钢球（冲过终点三选一强化）"
+	_upgrades_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
+	_upgrades_label.text = "当前构筑：初始陶瓷球（冲过终点三选一强化）"
 	b_vbox.add_child(_upgrades_label)
 
 	var h_spacer := Control.new()
@@ -233,38 +254,43 @@ func _build_layout() -> void:
 	bottom_row.add_child(h_spacer)
 
 	var speed_panel := PanelContainer.new()
-	speed_panel.custom_minimum_size = Vector2(280.0, 0.0)
+	speed_panel.custom_minimum_size = Vector2(265.0, 0.0)
 	speed_panel.size_flags_vertical = Control.SIZE_SHRINK_END
 	speed_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	speed_panel.add_theme_stylebox_override(
 		"panel",
-		UiTheme.make_panel_style(Color(0.07, 0.10, 0.17, 0.86), Color(0.20, 0.92, 0.78, 0.88))
+		UiTheme.make_storybook_card_style(
+			UiTheme.CREAM_BG,
+			Color(0.56, 0.78, 0.68, 0.90),
+			18,
+			2
+		)
 	)
 	bottom_row.add_child(speed_panel)
 
 	var sp_vbox := VBoxContainer.new()
-	sp_vbox.add_theme_constant_override("separation", 4)
+	sp_vbox.add_theme_constant_override("separation", 3)
 	sp_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	speed_panel.add_child(sp_vbox)
 
 	_speed_label = Label.new()
 	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_speed_label.add_theme_font_size_override("font_size", 30)
-	_speed_label.add_theme_color_override("font_color", Color(0.32, 1.0, 0.86))
+	_speed_label.add_theme_font_size_override("font_size", 28)
+	_speed_label.add_theme_color_override("font_color", UiTheme.SAGE_ACCENT)
 	_speed_label.text = "0 km/h"
 	sp_vbox.add_child(_speed_label)
 
 	_momentum_label = Label.new()
 	_momentum_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_momentum_label.add_theme_font_size_override("font_size", 15)
-	_momentum_label.add_theme_color_override("font_color", Color(0.82, 0.90, 0.98))
+	_momentum_label.add_theme_font_size_override("font_size", 14)
+	_momentum_label.add_theme_color_override("font_color", UiTheme.INK_MUTED)
 	_momentum_label.text = "动量 P: 0.0  |  ● 1.5 kg"
 	sp_vbox.add_child(_momentum_label)
 
 	_overload_label = Label.new()
 	_overload_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_overload_label.add_theme_font_size_override("font_size", 15)
-	_overload_label.add_theme_color_override("font_color", Color(1.0, 0.76, 0.28))
+	_overload_label.add_theme_font_size_override("font_size", 14)
+	_overload_label.add_theme_color_override("font_color", UiTheme.AMBER_ACCENT)
 	_overload_label.text = "冲量乘区: x1.00"
 	sp_vbox.add_child(_overload_label)
 
@@ -278,7 +304,7 @@ func _build_seed_modal() -> void:
 	_seed_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.05, 0.07, 0.12, 0.46)
+	backdrop.color = Color(0.20, 0.14, 0.10, 0.46)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	_seed_modal.add_child(backdrop)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -289,10 +315,15 @@ func _build_seed_modal() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(460.0, 215.0)
+	card.custom_minimum_size = Vector2(460.0, 220.0)
 	card.add_theme_stylebox_override(
 		"panel",
-		UiTheme.make_panel_style(Color(0.08, 0.11, 0.19, 0.97), Color(0.96, 0.76, 0.28, 0.95), 14, 3)
+		UiTheme.make_storybook_card_style(
+			UiTheme.CREAM_ELEVATED,
+			Color(0.82, 0.65, 0.42, 0.95),
+			22,
+			3
+		)
 	)
 	center.add_child(card)
 
@@ -302,20 +333,20 @@ func _build_seed_modal() -> void:
 
 	var title := Label.new()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.52))
+	title.add_theme_font_size_override("font_size", 23)
+	title.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
 	title.text = "填入挑战种子（比赛已暂停）"
 	vb.add_child(title)
 
 	var desc := Label.new()
 	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc.add_theme_font_size_override("font_size", 14)
-	desc.add_theme_color_override("font_color", Color(0.78, 0.86, 0.96))
+	desc.add_theme_color_override("font_color", UiTheme.INK_MUTED)
 	desc.text = "输入数字、英文或中文口令从第 1 关开跑（留空则生成新随机种子）"
 	vb.add_child(desc)
 
 	_seed_line_edit = LineEdit.new()
-	_seed_line_edit.placeholder_text = "例如：TABLETOP2026 / 888888 / 给我滚"
+	_seed_line_edit.placeholder_text = "例如：STORYBOOK / 888888 / 给我滚"
 	_seed_line_edit.custom_minimum_size = Vector2(0.0, 42.0)
 	_seed_line_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_seed_line_edit.text_submitted.connect(_on_seed_text_submitted)
@@ -411,7 +442,7 @@ func update_thrust_indicators(thrust_axis: float) -> void:
 	)
 	_left_thrust_label.add_theme_color_override(
 		"font_color",
-		Color(0.96, 1.0, 1.0, 1.0) if left_on else Color(0.54, 0.62, 0.72, 0.68)
+		Color(0.99, 1.0, 0.98, 1.0) if left_on else Color(0.52, 0.42, 0.32, 0.78)
 	)
 
 	_right_thrust_badge.add_theme_stylebox_override(
@@ -420,7 +451,7 @@ func update_thrust_indicators(thrust_axis: float) -> void:
 	)
 	_right_thrust_label.add_theme_color_override(
 		"font_color",
-		Color(0.96, 1.0, 1.0, 1.0) if right_on else Color(0.54, 0.62, 0.72, 0.68)
+		Color(0.99, 1.0, 0.98, 1.0) if right_on else Color(0.52, 0.42, 0.32, 0.78)
 	)
 
 
@@ -445,9 +476,9 @@ func update_hud(
 	]
 	_timer_label.text = "%0.2f s" % time_left
 	if time_left <= 8.0:
-		_timer_label.add_theme_color_override("font_color", Color(1.0, 0.30, 0.25))
+		_timer_label.add_theme_color_override("font_color", UiTheme.CORAL_ALERT)
 	else:
-		_timer_label.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
+		_timer_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
 
 	if seed_text != "":
 		_current_seed_text = seed_text
@@ -467,5 +498,7 @@ func update_hud(
 	else:
 		_overload_label.text = "冲量乘区: x%0.2f" % impulse_mult
 
+	if _respawn_pill != null:
+		_respawn_pill.visible = respawning
 	_respawn_banner.visible = respawning
 	_upgrades_label.text = upgrade_summary

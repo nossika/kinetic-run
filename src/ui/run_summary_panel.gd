@@ -18,7 +18,7 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.06, 0.05, 0.10, 0.84)
+	backdrop.color = Color(0.20, 0.14, 0.10, 0.56)
 	add_child(backdrop)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -30,7 +30,12 @@ func _build_ui() -> void:
 	card.custom_minimum_size = Vector2(580.0, 420.0)
 	card.add_theme_stylebox_override(
 		"panel",
-		UiTheme.make_panel_style(Color(0.09, 0.11, 0.20, 0.96), Color(1.0, 0.44, 0.32), 14, 3)
+		UiTheme.make_storybook_card_style(
+			UiTheme.CREAM_ELEVATED,
+			Color(0.86, 0.54, 0.42, 0.94),
+			22,
+			3
+		)
 	)
 	center.add_child(card)
 
@@ -40,9 +45,9 @@ func _build_ui() -> void:
 
 	var title := Label.new()
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 32)
-	title.add_theme_color_override("font_color", Color(1.0, 0.46, 0.36))
-	title.text = "时间耗尽 · 冲刺终止"
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", UiTheme.CORAL_ALERT)
+	title.text = "时间耗尽 · 本趟滚滚旅程结束"
 	vb.add_child(title)
 
 	_stats_label = Label.new()
@@ -50,7 +55,7 @@ func _build_ui() -> void:
 	_stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_stats_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_stats_label.add_theme_font_size_override("font_size", 17)
-	_stats_label.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0))
+	_stats_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
 	vb.add_child(_stats_label)
 
 	var restart_btn := Button.new()
@@ -98,7 +103,7 @@ func show_summary(run_state: RunState, build_text: String) -> void:
 			]
 			+ "本局峰值极速：%d km/h\n" % int(round(run_state.peak_speed_kmh))
 			+ "最大单次动能：%d J\n" % int(round(run_state.max_kinetic_energy))
-			+ "累计撞飞路障/怪物：%d 个\n\n" % run_state.total_smashed
+			+ "累计撞飞路障/小怪：%d 个\n\n" % run_state.total_smashed
 			+ "%s" % build_text
 		)
 
