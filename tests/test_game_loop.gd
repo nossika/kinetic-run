@@ -154,6 +154,9 @@ func _capture_world_track_state(world: Variant) -> Dictionary:
 		var extra: String = str(node_ent.get_meta("weight_label", ""))
 		if node_ent is AerialBlocker:
 			extra += "|phase=%0.4f" % (node_ent as AerialBlocker).initial_phase
+		elif node_ent is WindZone:
+			var wz := node_ent as WindZone
+			extra += "|wind=%s:%0.2f" % [wz.wind_preset, wz.wind_force_newtons]
 		entity_records.append("%s@(%0.3f,%0.3f,%0.3f)rotY=%0.3f[%s]" % [scr_path, p.x, p.y, p.z, rot_y, extra])
 
 	return {
@@ -197,6 +200,13 @@ func _test_vertical_gravity_zero_roll_and_slope_stability() -> void:
 	assert_approx(world.chase_camera.rotation_degrees.z, 0.0, 0.001, "ChaseCamera3D roll is strictly 0.0 at start")
 
 	# Record unhit 500g, 800g WoodenPin, and 20kg rigidbodies far down the -11° slope (local Z < -45m so ball won't reach them in 30 frames)
+	# Exclude light 500g/800g obstacles inside active WindZones (since WindZone intentionally blows light crates and pins!),
+	# while keeping 20kg ShieldBrutes stationary everywhere.
+	var active_wind_zones: Array[WindZone] = []
+	for ent in world.track_generator.active_entities:
+		if ent is WindZone and is_instance_valid(ent):
+			active_wind_zones.append(ent as WindZone)
+
 	var tracked_500g: Array[Dictionary] = []
 	var tracked_800g: Array[Dictionary] = []
 	var tracked_20kg: Array[Dictionary] = []
@@ -204,10 +214,15 @@ func _test_vertical_gravity_zero_roll_and_slope_stability() -> void:
 		var node_ent := ent as Node3D
 		if node_ent == null or not is_instance_valid(node_ent) or node_ent.position.z > -45.0:
 			continue
+		var in_wind := false
+		for wz in active_wind_zones:
+			if wz.contains_local_point(node_ent.position, 0.5):
+				in_wind = true
+				break
 		var w_lbl := str(node_ent.get_meta("weight_label", ""))
-		if w_lbl == "500g" and node_ent is RigidBody3D:
+		if w_lbl == "500g" and node_ent is RigidBody3D and not in_wind:
 			tracked_500g.append({"node": node_ent, "start_pos": node_ent.position})
-		elif w_lbl == "800g" and node_ent is WoodenPin:
+		elif w_lbl == "800g" and node_ent is WoodenPin and not in_wind:
 			tracked_800g.append({"node": node_ent, "start_pos": node_ent.position})
 		elif w_lbl == "20kg" and node_ent is RigidBody3D:
 			tracked_20kg.append({"node": node_ent, "start_pos": node_ent.position})
@@ -415,8 +430,17 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	if world.hud_overlay.has_method("open_seed_dialog") and world.hud_overlay.has_method("close_seed_dialog"):
 		var pause_slime = TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, -45.0), 2.8)
 		var pause_blocker = TrackEntityFactory.create_aerial_blocker(Vector3(0.0, 3.2, -45.0), "soft_balloon", 0.35)
+		var pause_wind = TrackEntityFactory.create_wind_zone(
+			Vector3(0.0, 1.8, -32.0),
+			Vector3(6.0, 3.6, 8.0),
+			"cross_right",
+			30.0
+		)
+		var pause_wind_crate = TrackEntityFactory.create_crate(Vector3(0.0, 0.50, -32.0), "light")
 		world.track_generator._spawn_entity(pause_slime)
 		world.track_generator._spawn_entity(pause_blocker)
+		world.track_generator._spawn_entity(pause_wind)
+		world.track_generator._spawn_entity(pause_wind_crate)
 		await scene_tree.physics_frame
 
 		var pre_vel: Vector3 = Vector3(0.0, -1.5, -14.0)
@@ -424,6 +448,8 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 		var paused_time: float = world.run_state.time_remaining
 		var slime_pos_paused: Vector3 = pause_slime.position
 		var blocker_pos_paused: Vector3 = pause_blocker.position
+		var wind_phase_paused: float = pause_wind._visual_phase
+		var wind_crate_pos_paused: Vector3 = pause_wind_crate.position
 
 		world.hud_overlay.call("open_seed_dialog")
 		assert_eq(world.game_state, "SEED_INPUT", "Opening seed modal switches game_state to SEED_INPUT")
@@ -444,6 +470,18 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 			0.0001,
 			"AerialBlocker position remains completely frozen while SEED_INPUT is open"
 		)
+		assert_approx(
+			pause_wind._visual_phase,
+			wind_phase_paused,
+			0.0001,
+			"WindZone _visual_phase remains completely frozen while SEED_INPUT is open"
+		)
+		assert_approx(
+			pause_wind_crate.position.distance_to(wind_crate_pos_paused),
+			0.0,
+			0.0001,
+			"500g crate inside WindZone remains completely frozen while SEED_INPUT is open"
+		)
 
 		world.hud_overlay.call("close_seed_dialog")
 		assert_eq(world.game_state, "RACING", "Cancelling seed modal resumes RACING state")
@@ -461,6 +499,15 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 			pause_blocker.position.distance_to(blocker_pos_paused),
 			0.01,
 			"AerialBlocker resumes bobbing/swaying cleanly on SEED_INPUT cancel"
+		)
+		assert_true(
+			absf(pause_wind._visual_phase - wind_phase_paused) > 0.01,
+			"WindZone _visual_phase resumes scrolling cleanly on SEED_INPUT cancel"
+		)
+		assert_gt(
+			pause_wind_crate.position.distance_to(wind_crate_pos_paused),
+			0.02,
+			"500g crate inside WindZone resumes blowing cleanly on SEED_INPUT cancel"
 		)
 
 		# Submitting a new seed via HUD modal restarts run on Level 1 with that seed

@@ -314,6 +314,13 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 	var found_slime := false
 	var found_barrel := false
 	var found_brute := false
+	var found_sky_platform := false
+	var found_high_air_entity := false
+	var found_ground_wind := false
+	var found_aerial_wind := false
+	var seen_wind_presets: Dictionary = {}
+	var sky_chunk_count := 0
+	var total_chunk_count := 0
 	var all_medium_crates_angled := true
 	var min_medium_crate_yaw := 999.0
 	var narrow_bridge_medium_crates := 0
@@ -325,8 +332,21 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 		var lvl := 2 if s <= 5 else 3
 		var info: Dictionary = gen.generate_track(lvl, 9000 + s * 37)
 		var chunks: Array = info["chunks"]
+		for ch in chunks:
+			total_chunk_count += 1
+			var chunk_has_sky := false
+			for child in ch.get_children():
+				if child is StaticBody3D and child.is_in_group("sky_platform") and (child as StaticBody3D).position.y >= 4.4:
+					found_sky_platform = true
+					chunk_has_sky = true
+			if chunk_has_sky:
+				sky_chunk_count += 1
+
 		for ent in info["entities"]:
 			var node_ent := ent as Node3D
+			if node_ent.position.y >= 4.5:
+				found_high_air_entity = true
+
 			var owner_chunk_type := ""
 			for ch in chunks:
 				if node_ent.position.z <= ch.entry_z and node_ent.position.z >= ch.exit_z:
@@ -383,6 +403,48 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 				found_brute = true
 				assert_true(ent is RigidBody3D, "ShieldBrute is a native RigidBody3D")
 				assert_eq((ent as ShieldBrute).weight_label, "20kg", "ShieldBrute weight_label is 20kg")
+			elif ent is WindZone:
+				var wz := ent as WindZone
+				seen_wind_presets[wz.wind_preset] = true
+				if wz.position.y < 3.6:
+					found_ground_wind = true
+				if wz.position.y >= 3.6 or wz.wind_preset == "updraft":
+					found_aerial_wind = true
+
+	# Verify +25% widened start platform, finish runway, and goal Area3D covering ground & sky layer
+	var tr_root: Node3D = gen.get_track_root()
+	if tr_root != null:
+		var start_chunk_node: Node3D = tr_root.get_child(0) as Node3D
+		var found_start_slab := false
+		if start_chunk_node != null:
+			for sc_child in start_chunk_node.get_children():
+				if sc_child is StaticBody3D and not sc_child.is_in_group("track_rail"):
+					for col_c in sc_child.get_children():
+						if col_c is CollisionShape3D and col_c.shape is BoxShape3D:
+							assert_approx((col_c.shape as BoxShape3D).size.x, 12.5, 0.02, "Start platform floor widened +25% to 12.5m")
+							found_start_slab = true
+		assert_true(found_start_slab, "Start platform floor slab exists")
+
+		var found_finish_slab := false
+		var found_goal_area := false
+		for root_child in tr_root.get_children():
+			if root_child is TrackChunkBase and root_child != start_chunk_node and not gen.active_chunks.has(root_child):
+				for fc in root_child.get_children():
+					if fc is StaticBody3D and not fc.is_in_group("track_rail"):
+						for col_f in fc.get_children():
+							if col_f is CollisionShape3D and col_f.shape is BoxShape3D:
+								assert_approx((col_f.shape as BoxShape3D).size.x, 15.0, 0.02, "Finish runway floor widened +25% to 15.0m")
+								found_finish_slab = true
+			elif root_child is Area3D and not (root_child is WindZone) and absf((root_child as Node3D).position.z - gen.finish_z) < 0.05:
+				for gc in root_child.get_children():
+					if gc is CollisionShape3D and gc.shape is BoxShape3D:
+						var gsz: Vector3 = (gc.shape as BoxShape3D).size
+						assert_approx(gsz.x, 28.0, 0.05, "Finish goal Area3D width covers +25% wide track (28.0m)")
+						assert_approx(gsz.y, 22.0, 0.05, "Finish goal Area3D height covers ground and sky finishes (22.0m)")
+						assert_approx(gsz.z, 3.5, 0.05, "Finish goal Area3D depth is 3.5m")
+						found_goal_area = true
+		assert_true(found_finish_slab, "Finish runway floor slab exists")
+		assert_true(found_goal_area, "Finish archway goal Area3D exists at finish_z")
 
 	assert_true(found_spring, "Generated tracks spawn SpringPad entities")
 	assert_true(found_ring, "Generated tracks spawn AerialBonusRing entities")
@@ -399,6 +461,18 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 	assert_true(found_slime, "Generated tracks spawn 3kg BouncerSlime RigidBody3D entities")
 	assert_true(found_barrel, "Generated tracks spawn 1.5kg ExplosiveBarrel RigidBody3D entities")
 	assert_true(found_brute, "Generated tracks spawn 20kg ShieldBrute RigidBody3D entities")
+	assert_true(found_sky_platform, "Generated tracks spawn upper-air SkyPlatform StaticBody3Ds (Y >= 4.4m)")
+	assert_true(found_high_air_entity, "Generated tracks spawn high-altitude entities (Y >= 4.5m)")
+	assert_true(found_ground_wind, "Generated tracks spawn ground-level WindZones (Y < 3.6m)")
+	assert_true(found_aerial_wind, "Generated tracks spawn aerial or updraft WindZones (Y >= 3.6m or updraft)")
+	assert_true(
+		seen_wind_presets.size() >= 4,
+		"Generated tracks spawn >= 4 distinct WindZone presets (got %d)" % seen_wind_presets.size()
+	)
+	assert_true(
+		total_chunk_count > 0 and float(sky_chunk_count) <= float(total_chunk_count) * 0.65,
+		"Upper-air SkyPlatforms stay sparse and uncluttered (%d / %d chunks <= 65%%)" % [sky_chunk_count, total_chunk_count]
+	)
 	assert_eq(narrow_bridge_medium_crates, 0, "NarrowBridge chunks contain zero 2kg medium crates")
 	assert_gt(float(narrow_bridge_light_or_pin), 0.0, "NarrowBridge Level 2+ chunks spawn lightweight 500g crates or 800g WoodenPins")
 	for expected_pin_chunk in ["StraightWide", "WaveHills", "SplitPath", "FunnelGauntlet"]:
@@ -432,6 +506,9 @@ func _capture_track_signature(info: Dictionary) -> Dictionary:
 		var extra: String = str(node_ent.get_meta("weight_label", ""))
 		if node_ent is AerialBlocker:
 			extra += "|phase=%0.4f" % (node_ent as AerialBlocker).initial_phase
+		elif node_ent is WindZone:
+			var wz := node_ent as WindZone
+			extra += "|wind=%s:%0.2f" % [wz.wind_preset, wz.wind_force_newtons]
 		ent_records.append("%s@(%0.3f,%0.3f,%0.3f)rotY=%0.3f[%s]" % [scr_path, p.x, p.y, p.z, rot_y, extra])
 
 	return {
