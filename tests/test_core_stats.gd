@@ -203,12 +203,22 @@ func _test_material_library_metadata_and_friction() -> void:
 	var jelly_core: StandardMaterial3D = lib_script.make_jelly_core_material(Color(0.45, 1.0, 0.55))
 
 	assert_true(beech != null and beech.uv1_triplanar, "Beechwood track material enables world/local triplanar tiling")
-	assert_eq(
-		beech.diffuse_mode,
-		BaseMaterial3D.DIFFUSE_LAMBERT_WRAP,
-		"Storybook materials use soft Half-Lambert wrap diffuse shading"
-	)
-	assert_true(beech.rim_enabled, "Storybook materials enable gentle Fresnel rim softness")
+	assert_false(beech.rim_enabled, "White rim highlight is disabled so edges do not wash out into background")
+	assert_true(beech.next_pass == null, "Floor slab beechwood material omits toon outline so track stays clean")
+
+	var outline_mat: StandardMaterial3D = lib_script.make_toon_outline_material(0.026)
+	assert_true(outline_mat != null, "make_toon_outline_material builds StandardMaterial3D")
+	assert_eq(outline_mat.cull_mode, BaseMaterial3D.CULL_FRONT, "Toon outline uses CULL_FRONT inverted hull")
+	assert_eq(outline_mat.shading_mode, BaseMaterial3D.SHADING_MODE_UNSHADED, "Toon outline is unshaded for crisp silhouette")
+	assert_true(outline_mat.grow and outline_mat.grow_amount > 0.01, "Toon outline enables vertex grow")
+
+	assert_true(light_crate.next_pass != null, "Light toy crate carries cocoa toon outline next_pass")
+	assert_true(heavy_crate.next_pass != null, "Heavy crate carries cocoa toon outline next_pass")
+	assert_true(barrel.next_pass != null, "Explosive barrel carries cocoa toon outline next_pass")
+	assert_true(silicone.next_pass != null, "Silicone props/rails carry cocoa toon outline next_pass")
+	assert_true(iron.next_pass != null, "Cast iron obstacles carry cocoa toon outline next_pass")
+	var starter_ball_mat: StandardMaterial3D = lib_script.make_starter_ball_material()
+	assert_true(starter_ball_mat.next_pass != null, "Starter ball carries cocoa toon outline next_pass")
 	assert_true(acrylic != null and acrylic.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA, "Frosted acrylic uses alpha transparency")
 	assert_true(light_crate != null and heavy_crate != null, "Both light and heavy wood crate materials created")
 	assert_true(light_crate.albedo_color != heavy_crate.albedo_color, "Heavy wood crate has distinct darker reinforced tint")

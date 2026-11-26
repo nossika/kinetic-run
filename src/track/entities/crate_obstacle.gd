@@ -55,7 +55,7 @@ func _ready() -> void:
 
 	_build_crate_visuals(box_size, is_heavy)
 
-	var label_color := Color(0.98, 0.93, 0.82) if is_heavy else Color(0.46, 0.32, 0.20)
+	var label_color := Color(0.99, 0.94, 0.84) if is_heavy else Color(0.99, 0.97, 0.90)
 	MaterialLibrary.attach_weight_labels(self, weight_label, box_size, label_color)
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)

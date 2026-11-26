@@ -35,7 +35,7 @@ func _ready() -> void:
 	add_child(col)
 
 	_build_pin_visuals()
-	MaterialLibrary.attach_weight_labels(self, weight_label, Vector3(0.56, 1.56, 0.56), Color(0.46, 0.32, 0.20))
+	MaterialLibrary.attach_weight_labels(self, weight_label, Vector3(0.56, 1.56, 0.56), Color(0.24, 0.16, 0.12))
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 
@@ -43,8 +43,8 @@ func _ready() -> void:
 func _build_pin_visuals() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var wood_mat := MaterialLibrary.make_beechwood_material(Color(1.03, 0.99, 0.93))
-	var stripe_mat := MaterialLibrary.make_pin_stripe_material(Color(0.92, 0.44, 0.38))
+	var wood_mat := MaterialLibrary.make_ceramic_pin_material(Color(0.99, 0.98, 0.95))
+	var stripe_mat := MaterialLibrary.make_pin_stripe_material(Color(0.90, 0.18, 0.18))
 
 	var belly_inst := MeshInstance3D.new()
 	var belly_mesh := ClayMeshBuilder.make_chamfered_cylinder(0.25, 0.28, 0.88, 0.09, 24)

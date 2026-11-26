@@ -285,7 +285,7 @@ func add_sky_platform(
 func _add_speed_stripes(z_len: float, half_w: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var stripe_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.96, 0.89))
+	var stripe_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.96, 0.89), false)
 	var stripe_mesh := ClayMeshBuilder.make_rounded_box(Vector3(half_w * 1.18, 0.018, 0.24), 0.008, 2)
 	var count := int(z_len / 7.5)
 	for i in range(count):
@@ -303,7 +303,7 @@ func _build_straight_wide() -> void:
 		Color(1.0, 0.98, 0.95)
 	)
 	_add_speed_stripes(length, 4.8)
-	var rail_col := Color(0.58, 0.83, 0.73)
+	var rail_col := Color(0.18, 0.68, 0.64)
 	_add_guard_rail(Vector3(-6.45, 0.52, -length * 0.5), Vector3(0.46, 1.04, length), rail_col)
 	_add_guard_rail(Vector3(6.45, 0.52, -length * 0.5), Vector3(0.46, 1.04, length), rail_col)
 
@@ -348,7 +348,7 @@ func _build_wave_hills() -> void:
 		base_wood
 	)
 
-	var rail_col := Color(0.62, 0.80, 0.91)
+	var rail_col := Color(0.22, 0.58, 0.88)
 	_add_guard_rail(Vector3(-6.45, 1.15, -length * 0.5), Vector3(0.46, 2.3, length), rail_col)
 	_add_guard_rail(Vector3(6.45, 1.15, -length * 0.5), Vector3(0.46, 2.3, length), rail_col)
 
@@ -370,7 +370,7 @@ func _build_narrow_bridge() -> void:
 		Color(0.99, 0.96, 0.92)
 	)
 	if DisplayServer.get_name() != "headless":
-		var trim_mat := MaterialLibrary.make_silicone_soft_material(Color(0.95, 0.68, 0.46))
+		var trim_mat := MaterialLibrary.make_silicone_soft_material(Color(0.92, 0.42, 0.28))
 		var trim_rbox := ClayMeshBuilder.make_rounded_box(Vector3(0.14, 0.07, 15.8), 0.032, 2)
 		for side in [-2.52, 2.52]:
 			var trim := MeshInstance3D.new()
@@ -385,13 +385,13 @@ func _build_split_path() -> void:
 		Vector3(STANDARD_WIDTH + 1.5, FLOOR_THICKNESS, length),
 		Color(0.99, 0.97, 0.93)
 	)
-	var rail_col := Color(0.58, 0.82, 0.76)
+	var rail_col := Color(0.18, 0.68, 0.64)
 	_add_guard_rail(Vector3(-7.2, 0.52, -length * 0.5), Vector3(0.46, 1.04, length), rail_col)
 	_add_guard_rail(Vector3(7.2, 0.52, -length * 0.5), Vector3(0.46, 1.04, length), rail_col)
 	_add_guard_rail(
 		Vector3(0.0, 0.62, -length * 0.5),
 		Vector3(1.6, 1.24, 20.0),
-		Color(0.91, 0.66, 0.50),
+		Color(0.92, 0.44, 0.30),
 		0.0,
 		false
 	)
@@ -419,7 +419,7 @@ func _build_ramp_gap() -> void:
 		Vector3(STANDARD_WIDTH, FLOOR_THICKNESS, 8.0),
 		Color(0.99, 0.97, 0.93)
 	)
-	var rail_col := Color(0.62, 0.80, 0.92)
+	var rail_col := Color(0.22, 0.58, 0.88)
 	_add_guard_rail(Vector3(-6.45, 0.82, -length * 0.5), Vector3(0.46, 1.64, length), rail_col)
 	_add_guard_rail(Vector3(6.45, 0.82, -length * 0.5), Vector3(0.46, 1.64, length), rail_col)
 
@@ -431,7 +431,7 @@ func _build_pinball_alley() -> void:
 		Color(0.99, 0.96, 0.93)
 	)
 	_add_speed_stripes(length, 4.6)
-	var rail_col := Color(0.94, 0.64, 0.68)
+	var rail_col := Color(0.90, 0.36, 0.44)
 	_add_guard_rail(Vector3(-6.45, 0.62, -length * 0.5), Vector3(0.48, 1.24, length), rail_col)
 	_add_guard_rail(Vector3(6.45, 0.62, -length * 0.5), Vector3(0.48, 1.24, length), rail_col)
 
@@ -442,7 +442,7 @@ func _build_funnel_gauntlet() -> void:
 		Vector3(STANDARD_WIDTH, FLOOR_THICKNESS, length),
 		Color(0.98, 0.95, 0.90)
 	)
-	var rail_col := Color(0.93, 0.60, 0.48)
+	var rail_col := Color(0.92, 0.42, 0.28)
 	_add_guard_rail(Vector3(-6.45, 0.62, -length * 0.5), Vector3(0.48, 1.24, length), rail_col)
 	_add_guard_rail(Vector3(6.45, 0.62, -length * 0.5), Vector3(0.48, 1.24, length), rail_col)
 	_add_guard_rail(Vector3(-4.75, 0.54, -10.0), Vector3(0.46, 1.08, 9.0), rail_col, -10.0, false)

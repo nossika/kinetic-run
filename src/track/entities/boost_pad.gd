@@ -14,12 +14,12 @@ func _ready() -> void:
 
 	var pad_mesh := MeshInstance3D.new()
 	var pebble := ClayMeshBuilder.make_pebble_pad(Vector2(2.3, 3.5), 0.10, 24)
-	var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.50, 0.85, 0.71))
+	var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.18, 0.80, 0.46))
 	ClayMeshBuilder.assign_mesh(pad_mesh, pebble, pad_mat)
 	add_child(pad_mesh)
 
 	if DisplayServer.get_name() != "headless":
-		var chev_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.97, 0.90))
+		var chev_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.98, 0.92), false)
 		chev_mat.emission_enabled = true
 		chev_mat.emission = Color(0.76, 0.98, 0.88)
 		chev_mat.emission_energy_multiplier = 0.35

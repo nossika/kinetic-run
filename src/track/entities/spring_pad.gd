@@ -53,12 +53,12 @@ func _ready() -> void:
 
 		var pad_inst := MeshInstance3D.new()
 		var pad_cyl := ClayMeshBuilder.make_chamfered_cylinder(1.02, 1.06, 0.16, 0.065, 24)
-		var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.82, 0.34))
+		var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.96, 0.46, 0.18))
 		ClayMeshBuilder.assign_mesh(pad_inst, pad_cyl, pad_mat)
 		_top_pad.add_child(pad_inst)
 
 		# Clean rounded relief cream chevron instead of harsh black-outlined text stencil
-		var chev_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.96, 0.90))
+		var chev_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.97, 0.90), false)
 		var arm_cap := CapsuleMesh.new()
 		arm_cap.radius = 0.055
 		arm_cap.height = 0.58

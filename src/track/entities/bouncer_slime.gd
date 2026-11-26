@@ -74,7 +74,7 @@ func _build_slime_visuals() -> void:
 	outer_sphere.height = 1.14
 	outer_sphere.radial_segments = 28
 	outer_sphere.rings = 16
-	outer_sphere.material = MaterialLibrary.make_jelly_outer_material(Color(0.44, 0.90, 0.64))
+	outer_sphere.material = MaterialLibrary.make_jelly_outer_material(Color(0.14, 0.82, 0.42))
 	RenderHelper.attach_mesh(outer_inst, outer_sphere)
 	_visual_root.add_child(outer_inst)
 
@@ -85,7 +85,7 @@ func _build_slime_visuals() -> void:
 	core_sphere.height = 0.64
 	core_sphere.radial_segments = 20
 	core_sphere.rings = 12
-	core_sphere.material = MaterialLibrary.make_jelly_core_material(Color(0.62, 0.96, 0.74))
+	core_sphere.material = MaterialLibrary.make_jelly_core_material(Color(0.40, 0.96, 0.58))
 	RenderHelper.attach_mesh(core_inst, core_sphere)
 	_visual_root.add_child(core_inst)
 

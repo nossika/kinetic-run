@@ -29,7 +29,7 @@ func _ready() -> void:
 		outer_torus.outer_radius = 1.18
 		outer_torus.rings = 32
 		outer_torus.ring_segments = 16
-		outer_torus.material = MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.80, 0.36))
+		outer_torus.material = MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.68, 0.14))
 		RenderHelper.attach_mesh(outer_ring, outer_torus)
 		outer_ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		_visual_root.add_child(outer_ring)
