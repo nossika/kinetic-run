@@ -6,6 +6,7 @@ func run() -> void:
 	await _test_player_ball_stats_thrust_hud_and_sloped_respawn()
 	_test_chase_camera_zero_roll_and_dynamic_fov()
 	await _test_real_collision_mass_ratio_and_tungsten_synergy()
+	await _test_sky_platform_landing_and_elevated_control()
 
 
 func _test_lateral_thrust_controller_instant_start_stop_and_vertical_gravity() -> void:
@@ -476,6 +477,107 @@ func _test_real_collision_mass_ratio_and_tungsten_synergy() -> void:
 		3,
 		"Second rebound off persistent 20kg ShieldBrute adds 1 bounce stack (zero duplicate smash stack)"
 	)
+
+	root.queue_free()
+	await scene_tree.process_frame
+
+
+func _test_sky_platform_landing_and_elevated_control() -> void:
+	var ball_script: GDScript = load("res://src/gameplay/player_ball_3d.gd")
+	var bus_script: GDScript = load("res://src/core/physics_synergy_bus.gd")
+	var catalog_script: GDScript = load("res://src/upgrades/upgrade_catalog.gd")
+	var chunk_script: GDScript = load("res://src/track/track_chunk_base.gd")
+	var ctrl_script: GDScript = load("res://src/gameplay/lateral_thrust_controller.gd")
+	if ball_script == null or bus_script == null or catalog_script == null or chunk_script == null:
+		return
+
+	var root := Node3D.new()
+	scene_tree.root.add_child(root)
+
+	var ctrl = null
+	if ctrl_script != null:
+		ctrl = ctrl_script.new()
+		ctrl.apply_vertical_gravity_to_space(root.get_world_3d().space)
+
+	var sloped_track := Node3D.new()
+	sloped_track.rotation_degrees = Vector3(-11.0, 0.0, 0.0)
+	root.add_child(sloped_track)
+
+	var chunk = chunk_script.new()
+	sloped_track.add_child(chunk)
+	chunk.build_chunk("StraightWide", 0.0)
+	chunk.add_sky_platform(Vector3(0.0, 5.0, -13.0), Vector3(4.0, 0.34, 14.0), false)
+
+	var catalog = catalog_script.new()
+	var bus = bus_script.new()
+	bus.apply_upgrade(catalog.get_upgrade("quake_refractor"))
+	bus.apply_upgrade(catalog.get_upgrade("momentum_overload"))
+
+	var ball = ball_script.new()
+	root.add_child(ball)
+	ball.setup(bus)
+	ball.track_reference = sloped_track
+	ball.reset_for_track(sloped_track.to_global(Vector3(0.0, ball.current_radius + 0.1, -2.0)))
+	await scene_tree.physics_frame
+
+	assert_true(
+		ball.has_method("has_ground_or_sky_support"),
+		"PlayerBall3D exposes has_ground_or_sky_support()"
+	)
+
+	var land_waves := {"count": 0}
+	ball.synergy_actions_requested.connect(
+		func(actions: Dictionary) -> void:
+			var ws: Array = actions.get("shockwaves", [])
+			land_waves["count"] = int(land_waves["count"]) + ws.size()
+	)
+
+	# Drop ball from high air (Y = 8.4m) onto the Y = 5.0m SkyPlatform
+	ball.global_position = sloped_track.to_global(Vector3(0.0, 8.4, -10.0))
+	ball.linear_velocity = (-sloped_track.global_transform.basis.z.normalized()) * 6.0
+
+	var landed_on_sky := false
+	var sky_control_accel := 0.0
+	for _f in range(40):
+		ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+		await scene_tree.physics_frame
+		var lpos: Vector3 = sloped_track.to_local(ball.global_position)
+		if lpos.y > 4.8 and not ball.is_airborne():
+			landed_on_sky = true
+			if ctrl != null:
+				sky_control_accel = ctrl.compute_lateral_accel(1.0, 1.0, ball.is_airborne())
+
+	assert_true(landed_on_sky, "PlayerBall3D recognizes surface support (is_airborne() == false) while rolling on Y=5.0m SkyPlatform")
+	assert_gt(float(land_waves["count"]), 0.0, "Landing on elevated SkyPlatform triggers on_land (Quake Refractor shockwave)")
+	assert_gt(float(bus.combo_stacks), 0.0, "Landing on elevated SkyPlatform grants Momentum Overload stack")
+	if ctrl != null:
+		assert_approx(sky_control_accel, 20.0, 0.01, "Ball rolling on SkyPlatform receives full ground lateral thrust control (20.0 m/s^2)")
+
+	# Rolling off the -Z end of SkyPlatform (z < -20.0) transitions back to airborne after SURFACE_SUPPORT_GRACE
+	ball.global_position = sloped_track.to_global(Vector3(0.0, 5.0 + 0.17 + ball.current_radius, -19.2))
+	ball.linear_velocity = (-sloped_track.global_transform.basis.z.normalized()) * 12.0
+	ball.angular_velocity = Vector3.ZERO
+	var supported_before_drop := false
+	for _f in range(2):
+		ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+		await scene_tree.physics_frame
+		if not ball.is_airborne():
+			supported_before_drop = true
+	assert_true(supported_before_drop, "Ball maintains surface support near SkyPlatform exit edge before leaving deck")
+	for _f in range(10):
+		ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+		await scene_tree.physics_frame
+	var off_deck_lpos: Vector3 = sloped_track.to_local(ball.global_position)
+	assert_gt(off_deck_lpos.y, 2.5, "Ball is still well above main floor shortly after leaving SkyPlatform")
+	assert_true(ball.is_airborne(), "Rolling off SkyPlatform transitions back to is_airborne() == true after SURFACE_SUPPORT_GRACE")
+
+	# Widened safe respawn X window (|x| <= 3.0) on main deck
+	ball.global_position = sloped_track.to_global(Vector3(2.8, ball.current_radius + 0.1, -22.0))
+	ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+	assert_approx(ball.last_safe_pos.z, -22.0, 0.05, "Widened safe respawn X window (|x| <= 3.0) updates last_safe_pos at x=2.8m")
+	ball.global_position = sloped_track.to_global(Vector3(3.2, ball.current_radius + 0.1, -24.0))
+	ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+	assert_approx(ball.last_safe_pos.z, -22.0, 0.05, "Position outside safe respawn X window (|x| = 3.2 > 3.0) does not overwrite last_safe_pos")
 
 	root.queue_free()
 	await scene_tree.process_frame

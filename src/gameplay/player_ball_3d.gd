@@ -11,6 +11,7 @@ const RESPAWN_DURATION: float = 1.2
 const STUCK_SPEED_THRESHOLD: float = 0.6
 const STUCK_DURATION: float = 1.8
 const AIRBORNE_MIN_TIME: float = 0.22
+const SURFACE_SUPPORT_GRACE: float = 0.08
 const OBSTACLE_BOUNCE_COOLDOWN: float = 0.18
 const MIN_OBSTACLE_REBOUND_DV: float = 3.2
 const MIN_RAIL_BOUNCE_DV: float = 0.75
@@ -26,6 +27,7 @@ var respawn_time_left: float = 0.0
 var _slime_zone_count: int = 0
 var _stuck_timer: float = 0.0
 var _air_time: float = 0.0
+var _surface_support_timer: float = 0.0
 var _peak_downward_speed: float = 0.0
 var _rail_bounce_cooldown: float = 0.0
 var _obstacle_bounce_cooldown: float = 0.0
@@ -143,9 +145,19 @@ func _set_ball_world_pos(world_pos: Vector3) -> void:
 		position = world_pos
 
 
-func is_airborne() -> bool:
+func has_ground_or_sky_support() -> bool:
 	var local_pos := _to_track_local(_get_ball_world_pos())
-	return (local_pos.y - (safe_floor_y + current_radius)) > 0.38
+	if (local_pos.y - (safe_floor_y + current_radius)) <= 0.38:
+		return true
+	if _surface_support_timer > 0.0:
+		var up_speed := linear_velocity.dot(_get_track_basis().y)
+		if up_speed <= 3.5:
+			return true
+	return false
+
+
+func is_airborne() -> bool:
+	return not has_ground_or_sky_support()
 
 
 func _build_nodes_if_needed() -> void:
@@ -411,6 +423,7 @@ func reset_for_track(start_pos: Vector3) -> void:
 	_slime_zone_count = 0
 	_stuck_timer = 0.0
 	_air_time = 0.0
+	_surface_support_timer = 0.0
 	_peak_downward_speed = 0.0
 	_rail_bounce_cooldown = 0.0
 	_obstacle_bounce_cooldown = 0.0
@@ -489,6 +502,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	elif v_pre.length_squared() <= 0.0001:
 		v_pre = v_post_raw
 
+	var track_up := get_track_basis().y.normalized()
 	var hit_movable_obstacle := false
 	var hit_undetonated_barrel := false
 
@@ -505,6 +519,14 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		var impulse_mag := col_impulse.length()
 		if impulse_mag <= 0.001:
 			impulse_mag = eff_mass * (v_post_raw - v_pre).length()
+
+		if (
+			col_node is StaticBody3D
+			and not col_node.is_in_group("track_rail")
+			and not col_node.is_in_group("pinball_bumper")
+			and contact_normal.dot(track_up) >= 0.62
+		):
+			_surface_support_timer = SURFACE_SUPPORT_GRACE
 
 		if col_node.is_in_group("pinball_bumper") and col_node.has_method("trigger_bumper_bounce"):
 			_pending_contact_events.append({
@@ -661,6 +683,7 @@ func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> 
 	# Check fall below track abyss in track-local coordinates
 	if local_pos.y < safe_floor_y - FALL_Y_OFFSET:
 		is_respawning = true
+		_surface_support_timer = 0.0
 		respawn_time_left = RESPAWN_DURATION
 		linear_velocity = Vector3.ZERO
 		angular_velocity = Vector3.ZERO
@@ -671,12 +694,13 @@ func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> 
 
 	# Update safe respawn anchor when comfortably near floor center in track-local space
 	if local_pos.y >= safe_floor_y - 0.5 and local_pos.y <= safe_floor_y + current_radius + 0.6:
-		if absf(local_pos.x) <= 2.4:
+		if absf(local_pos.x) <= 3.0:
 			last_safe_pos = Vector3(0.0, safe_floor_y + current_radius + 0.2, local_pos.z)
 
 	# Airborne tracking & landing detection in track-local space
-	var height_above_floor := local_pos.y - (safe_floor_y + current_radius)
-	if height_above_floor > 0.38:
+	var currently_supported := has_ground_or_sky_support()
+	_surface_support_timer = maxf(0.0, _surface_support_timer - delta)
+	if not currently_supported:
 		_air_time += delta
 		var down_speed := -linear_velocity.dot(track_basis.y)
 		if down_speed > _peak_downward_speed:
@@ -696,7 +720,7 @@ func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> 
 	# Hold-to-thrust lateral force & instant-release gentle lateral stop damping
 	if absf(lateral_accel) > 0.0001:
 		apply_central_force(track_basis.x * (lateral_accel * mass))
-	elif absf(thrust_axis) < 0.05 and height_above_floor <= 0.38:
+	elif absf(thrust_axis) < 0.05 and currently_supported:
 		var lat_v := linear_velocity.dot(track_basis.x)
 		if absf(lat_v) > 0.001:
 			apply_central_force(-track_basis.x * (lat_v * 2.2 * mass))
