@@ -251,11 +251,16 @@ func _test_material_library_metadata_and_friction() -> void:
 	for tex_path in [
 		lib_script.TEX_TRACK_BEECHWOOD,
 		lib_script.TEX_CRATE_BALSA_WOOD,
+		lib_script.TEX_CRATE_PAINTED_BLUE,
 		lib_script.TEX_METAL_CAST_IRON,
 		lib_script.TEX_ANCHOR_HAZARD_STRIPE,
 		lib_script.TEX_BARREL_RETRO_HAZARD,
 		lib_script.TEX_JELLY_BUBBLE_SOFT,
 		lib_script.TEX_STORYBOOK_SKY_CLOUDS,
+		lib_script.TEX_BALL_LIVERY_BEACH,
+		lib_script.TEX_BALL_LIVERY_RACER,
+		lib_script.TEX_BALL_LIVERY_SWIRL,
+		lib_script.TEX_BALL_LIVERY_POLKA,
 		lib_script.BUNDLED_FONT_PATH,
 	]:
 		assert_true(ResourceLoader.exists(tex_path), "Imported asset exists: %s" % tex_path)

@@ -3,11 +3,16 @@ extends RefCounted
 
 const TEX_TRACK_BEECHWOOD: String = "res://assets/textures/track_beechwood.png"
 const TEX_CRATE_BALSA_WOOD: String = "res://assets/textures/crate_balsa_wood.png"
+const TEX_CRATE_PAINTED_BLUE: String = "res://assets/textures/crate_painted_blue.png"
 const TEX_METAL_CAST_IRON: String = "res://assets/textures/metal_cast_iron.png"
 const TEX_ANCHOR_HAZARD_STRIPE: String = "res://assets/textures/anchor_hazard_stripe.png"
 const TEX_BARREL_RETRO_HAZARD: String = "res://assets/textures/barrel_retro_hazard.png"
 const TEX_JELLY_BUBBLE_SOFT: String = "res://assets/textures/jelly_bubble_soft.png"
 const TEX_STORYBOOK_SKY_CLOUDS: String = "res://assets/textures/storybook_sky_clouds.png"
+const TEX_BALL_LIVERY_BEACH: String = "res://assets/textures/ball_livery_beach.png"
+const TEX_BALL_LIVERY_RACER: String = "res://assets/textures/ball_livery_racer.png"
+const TEX_BALL_LIVERY_SWIRL: String = "res://assets/textures/ball_livery_swirl.png"
+const TEX_BALL_LIVERY_POLKA: String = "res://assets/textures/ball_livery_polka.png"
 const BUNDLED_FONT_PATH: String = "res://assets/fonts/game_ui_zh.ttf"
 
 static var _texture_cache: Dictionary = {}
