@@ -367,6 +367,8 @@ func _test_rigidbody_clearance_and_chunk_z_bounds() -> void:
 			for i in range(rbs.size()):
 				var pi := Vector2(rbs[i].position.x, rbs[i].position.z)
 				for j in range(i + 1, rbs.size()):
+					if absf(rbs[i].position.y - rbs[j].position.y) >= 1.50:
+						continue
 					var pj := Vector2(rbs[j].position.x, rbs[j].position.z)
 					min_rb_dist = minf(min_rb_dist, pi.distance_to(pj))
 

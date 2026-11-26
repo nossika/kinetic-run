@@ -1,24 +1,23 @@
 class_name AerialBlocker
-extends Node3D
+extends RigidBody3D
 
-const SOFT_SMASH_MOMENTUM: float = 18.0
-const SOFT_SPEED_LOSS: float = 0.06
-const IRON_SMASH_MOMENTUM: float = 36.0
-const IRON_SPEED_LOSS: float = 0.14
+const ABYSS_LOCAL_Y: float = -28.0
+const MAX_SHOCKWAVE_SPEED: float = 32.0
 
 var blocker_type: String = "soft_balloon"
 var initial_phase: float = 0.0
-var is_smashed: bool = false
-var weight_label: String = "2kg"
-var smash_momentum: float = SOFT_SMASH_MOMENTUM
-var speed_loss_ratio: float = SOFT_SPEED_LOSS
+var weight_label: String = "250g"
+var min_smash_impulse: float = 0.8
+var untether_impulse: float = 0.5
+var is_tethered: bool = true
+var is_dislodged: bool = false
+var has_yielded_smash: bool = false
 
 var _elapsed: float = 0.0
 var _origin_pos: Vector3 = Vector3.ZERO
-var _fly_vel: Vector3 = Vector3.ZERO
-var _ttl: float = 0.0
-var _hit_cooldown: float = 0.0
-var _sensor: Area3D = null
+var _origin_captured: bool = false
+var _mag_ring: MeshInstance3D = null
+var _queued_shockwave_dv: float = 0.0
 
 
 func _init() -> void:
@@ -29,25 +28,67 @@ func configure_type(p_type: String, p_phase: float = 0.0) -> void:
 	initial_phase = p_phase
 	if p_type == "mag_iron":
 		blocker_type = "mag_iron"
+		mass = 12.0
 		weight_label = "12kg"
-		smash_momentum = IRON_SMASH_MOMENTUM
-		speed_loss_ratio = IRON_SPEED_LOSS
+		min_smash_impulse = 4.5
+		untether_impulse = 4.5
+		physics_material_override = MaterialLibrary.high_friction_physics(0.82, 0.16)
 	else:
 		blocker_type = "soft_balloon"
-		weight_label = "2kg"
-		smash_momentum = SOFT_SMASH_MOMENTUM
-		speed_loss_ratio = SOFT_SPEED_LOSS
+		mass = 0.25
+		weight_label = "250g"
+		min_smash_impulse = 0.8
+		untether_impulse = 0.5
+		physics_material_override = MaterialLibrary.high_friction_physics(0.35, 0.92)
 	set_meta("weight_label", weight_label)
 
 
 func _ready() -> void:
 	configure_type(blocker_type, initial_phase)
 	_origin_pos = position
+	_origin_captured = true
 
-	_sensor = Area3D.new()
-	var s_col := CollisionShape3D.new()
+	freeze = false
+	can_sleep = false
+	lock_rotation = is_tethered
+	if is_tethered:
+		gravity_scale = 0.0
+		linear_damp = 0.0
+		angular_damp = 0.24 if blocker_type == "mag_iron" else 0.35
+	elif blocker_type == "mag_iron":
+		gravity_scale = 1.0
+		linear_damp = 0.14
+		angular_damp = 0.24
+	else:
+		gravity_scale = 0.28
+		linear_damp = 0.48
+		angular_damp = 0.35
 
+	contact_monitor = true
+	max_contacts_reported = 4
+
+	var col := CollisionShape3D.new()
 	if blocker_type == "mag_iron":
+		var b_shape := BoxShape3D.new()
+		b_shape.size = Vector3(1.25, 1.25, 1.25)
+		col.shape = b_shape
+		add_child(col)
+		_build_mag_iron_visuals()
+		MaterialLibrary.attach_weight_labels(self, "12kg", Vector3(1.25, 1.25, 1.25), Color(0.96, 0.97, 1.0))
+	else:
+		var s_shape := SphereShape3D.new()
+		s_shape.radius = 0.72
+		col.shape = s_shape
+		add_child(col)
+		_build_balloon_visuals()
+		MaterialLibrary.attach_weight_labels(self, "250g", Vector3(1.45, 1.45, 1.45), Color(0.99, 0.97, 0.92))
+
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+
+
+func _build_mag_iron_visuals() -> void:
+	if DisplayServer.get_name() != "headless":
 		var cube_inst := MeshInstance3D.new()
 		var cube_mesh := BoxMesh.new()
 		cube_mesh.size = Vector3(1.25, 1.25, 1.25)
@@ -55,103 +96,126 @@ func _ready() -> void:
 		RenderHelper.attach_mesh(cube_inst, cube_mesh)
 		add_child(cube_inst)
 
-		if DisplayServer.get_name() != "headless":
-			var mag_ring := MeshInstance3D.new()
-			var mag_torus := TorusMesh.new()
-			mag_torus.inner_radius = 0.55
-			mag_torus.outer_radius = 0.78
-			mag_torus.rings = 24
-			mag_torus.ring_segments = 12
-			mag_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.14, 0.92, 1.0, 0.85))
-			RenderHelper.attach_mesh(mag_ring, mag_torus)
-			mag_ring.position = Vector3(0.0, -0.78, 0.0)
-			add_child(mag_ring)
+	_mag_ring = MeshInstance3D.new()
+	_mag_ring.name = "MagRing"
+	_mag_ring.position = Vector3(0.0, -0.78, 0.0)
+	_mag_ring.visible = is_tethered
+	if DisplayServer.get_name() != "headless":
+		var mag_torus := TorusMesh.new()
+		mag_torus.inner_radius = 0.55
+		mag_torus.outer_radius = 0.78
+		mag_torus.rings = 24
+		mag_torus.ring_segments = 12
+		mag_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.14, 0.92, 1.0, 0.85))
+		RenderHelper.attach_mesh(_mag_ring, mag_torus)
+	add_child(_mag_ring)
 
-		MaterialLibrary.attach_weight_labels(self, "12kg", Vector3(1.25, 1.25, 1.25), Color(0.96, 0.97, 1.0))
 
-		var b_shape := BoxShape3D.new()
-		b_shape.size = Vector3(1.50, 1.50, 1.50)
-		s_col.shape = b_shape
-	else:
-		var balloon_inst := MeshInstance3D.new()
-		var balloon_mesh := SphereMesh.new()
-		balloon_mesh.radius = 0.72
-		balloon_mesh.height = 1.44
-		balloon_mesh.material = MaterialLibrary.make_silicone_soft_material(Color(1.0, 0.52, 0.34))
-		RenderHelper.attach_mesh(balloon_inst, balloon_mesh)
-		add_child(balloon_inst)
+func _build_balloon_visuals() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var balloon_inst := MeshInstance3D.new()
+	var balloon_mesh := SphereMesh.new()
+	balloon_mesh.radius = 0.72
+	balloon_mesh.height = 1.44
+	balloon_mesh.material = MaterialLibrary.make_silicone_soft_material(Color(1.0, 0.52, 0.34))
+	RenderHelper.attach_mesh(balloon_inst, balloon_mesh)
+	add_child(balloon_inst)
 
-		if DisplayServer.get_name() != "headless":
-			var knot_inst := MeshInstance3D.new()
-			var knot_cyl := CylinderMesh.new()
-			knot_cyl.top_radius = 0.08
-			knot_cyl.bottom_radius = 0.14
-			knot_cyl.height = 0.16
-			knot_cyl.material = MaterialLibrary.make_silicone_soft_material(Color(0.92, 0.42, 0.26))
-			RenderHelper.attach_mesh(knot_inst, knot_cyl)
-			knot_inst.position = Vector3(0.0, -0.76, 0.0)
-			add_child(knot_inst)
-
-		MaterialLibrary.attach_weight_labels(self, "2kg", Vector3(1.45, 1.45, 1.45), Color(0.99, 0.97, 0.92))
-
-		var s_shape := SphereShape3D.new()
-		s_shape.radius = 0.98
-		s_col.shape = s_shape
-
-	_sensor.add_child(s_col)
-	_sensor.body_entered.connect(_on_body_entered)
-	add_child(_sensor)
+	var knot_inst := MeshInstance3D.new()
+	var knot_cyl := CylinderMesh.new()
+	knot_cyl.top_radius = 0.08
+	knot_cyl.bottom_radius = 0.14
+	knot_cyl.height = 0.16
+	knot_cyl.material = MaterialLibrary.make_silicone_soft_material(Color(0.92, 0.42, 0.26))
+	RenderHelper.attach_mesh(knot_inst, knot_cyl)
+	knot_inst.position = Vector3(0.0, -0.76, 0.0)
+	add_child(knot_inst)
 
 
 func _physics_process(delta: float) -> void:
-	_hit_cooldown = maxf(0.0, _hit_cooldown - delta)
-	if is_smashed:
-		global_position += _fly_vel * delta
-		rotate_x(7.5 * delta)
-		rotate_z(5.5 * delta)
-		_ttl -= delta
-		if _ttl <= 0.0:
-			queue_free()
-		return
+	_queued_shockwave_dv = 0.0
+	if not _origin_captured:
+		_origin_pos = position
+		_origin_captured = true
 
-	_elapsed += delta
-	var phase := _elapsed + initial_phase
-	var sway_x := sin(phase * 1.8) * 0.45
-	var bob_y := sin(phase * 2.7) * 0.28
-	position = Vector3(_origin_pos.x + sway_x, _origin_pos.y + bob_y, _origin_pos.z)
+	if is_tethered:
+		if mass * linear_velocity.length() >= untether_impulse:
+			untether()
+		else:
+			_elapsed += delta
+			var phase := _elapsed + initial_phase
+			var sway_x := sin(phase * 1.8) * 0.45
+			var bob_y := sin(phase * 2.7) * 0.28
+			position = Vector3(_origin_pos.x + sway_x, _origin_pos.y + bob_y, _origin_pos.z)
+			linear_velocity = Vector3.ZERO
+			angular_velocity = Vector3.ZERO
+
+	if get_parent() is Node3D and position.y < ABYSS_LOCAL_Y:
+		queue_free()
+
+
+func untether() -> void:
+	if not is_tethered and is_dislodged:
+		return
+	is_tethered = false
+	is_dislodged = true
+	lock_rotation = false
+	sleeping = false
+	if blocker_type == "mag_iron":
+		gravity_scale = 1.0
+		linear_damp = 0.14
+		angular_damp = 0.24
+		if _mag_ring != null:
+			_mag_ring.visible = false
+	else:
+		gravity_scale = 0.28
+		linear_damp = 0.48
+		angular_damp = 0.35
+
+
+func dislodge() -> void:
+	untether()
+
+
+func on_ball_physical_impact(impulse_mag: float) -> bool:
+	if impulse_mag >= untether_impulse:
+		untether()
+	if not has_yielded_smash and impulse_mag >= min_smash_impulse:
+		has_yielded_smash = true
+		return true
+	return false
 
 
 func _on_body_entered(body: Node) -> void:
-	if body is PlayerBall3D:
-		interact_with_ball(body as PlayerBall3D)
-
-
-func interact_with_ball(ball: PlayerBall3D) -> void:
-	if is_smashed or ball == null or ball.is_respawning:
+	if not (body is PlayerBall3D):
 		return
-	var origin := global_position if is_inside_tree() else position
-	var ball_pos := ball.global_position if ball.is_inside_tree() else ball.position
-
-	if ball.get_current_momentum() >= smash_momentum:
-		_smash(Vector3(ball.linear_velocity.x * 0.3, 9.0, -20.0))
-		ball.notify_smash_target(origin, speed_loss_ratio, 0)
+	var ball := body as PlayerBall3D
+	if ball.is_respawning or ball.has_method("notify_obstacle_impact"):
 		return
-
-	if _hit_cooldown > 0.0:
-		return
-
-	if blocker_type == "mag_iron":
-		_hit_cooldown = 0.28
-		ball.linear_velocity.z *= 0.30
-		ball.linear_velocity.y = minf(ball.linear_velocity.y, -2.5)
-		ball.notify_wall_or_bumper_bounce(Vector3.BACK, origin, 0.0)
-	else:
-		_hit_cooldown = 0.24
-		ball.linear_velocity.z = maxf(ball.linear_velocity.z * 0.4, 3.5)
-		var lat_sign := 1.0 if (ball_pos.x - origin.x) >= 0.0 else -1.0
-		ball.linear_velocity.x = lat_sign * 5.5
-		ball.linear_velocity.y = maxf(ball.linear_velocity.y, 2.5)
-		ball.notify_wall_or_bumper_bounce(Vector3.BACK, origin, 0.0)
+	var pre_vel := ball._saved_velocity_pre_step if ball._saved_velocity_pre_step.length_squared() > 0.001 else ball.linear_velocity
+	var post_vel := ball.linear_velocity
+	var impulse_est := ball.mass * (post_vel - pre_vel).length()
+	if impulse_est < 0.05:
+		var mu := (ball.mass * mass) / maxf(0.05, ball.mass + mass)
+		impulse_est = mu * (pre_vel - linear_velocity).length()
+	if ball.synergy_bus != null:
+		var loss_mult := ball.synergy_bus.stats.get_stat("smash_speed_loss_mult")
+		if loss_mult < 0.999:
+			var fwd_dir := -ball.get_track_basis().z.normalized()
+			var dv_fwd := pre_vel.dot(fwd_dir) - post_vel.dot(fwd_dir)
+			if dv_fwd > 0.2:
+				var restored := post_vel + fwd_dir * (dv_fwd * (1.0 - clampf(loss_mult, 0.0, 1.0)))
+				var max_spd := pre_vel.length()
+				if restored.length() > max_spd and max_spd > 0.001:
+					restored = restored.normalized() * max_spd
+				ball.linear_velocity = restored
+	if on_ball_physical_impact(impulse_est):
+		var self_pos := global_position if is_inside_tree() else position
+		var saved_pre := ball._saved_velocity_pre_step
+		ball._saved_velocity_pre_step = ball.linear_velocity
+		ball.notify_smash_target(self_pos, 0.0, 0)
+		ball._saved_velocity_pre_step = ball.linear_velocity if ball.linear_velocity.length() > saved_pre.length() else saved_pre
 
 
 func apply_shockwave(
@@ -161,22 +225,30 @@ func apply_shockwave(
 	chain_depth: int,
 	ball: PlayerBall3D
 ) -> void:
-	if is_smashed:
-		return
-	var req_force := 10.0 if blocker_type == "mag_iron" else 6.0
 	var self_pos := global_position if is_inside_tree() else position
-	if self_pos.distance_to(origin) <= radius and force >= req_force:
-		var dir := (self_pos - origin).normalized()
-		if dir.length_squared() < 0.01:
-			dir = Vector3(0.0, 1.0, -1.0).normalized()
-		_smash(dir * 16.0 + Vector3(0.0, 8.0, -6.0))
+	var dist := self_pos.distance_to(origin)
+	var req_force := 6.0 if blocker_type == "mag_iron" else 4.0
+	if dist > radius or force < req_force:
+		return
+	untether()
+	var falloff := clampf(1.0 - (dist / (radius * 1.15)), 0.25, 1.0)
+	var radial := self_pos - origin
+	radial.y = 0.0
+	var dir := radial.normalized() if radial.length_squared() > 0.001 else Vector3(0.25, 0.0, -1.0).normalized()
+	var up_dir := global_transform.basis.y.normalized() if is_inside_tree() else Vector3.UP
+	var impulse_mag := force * 0.85 * falloff
+	var impulse_vec := (dir + up_dir * 0.38).normalized() * impulse_mag
+	var budget_dv := maxf(0.0, MAX_SHOCKWAVE_SPEED - linear_velocity.length() - _queued_shockwave_dv)
+	var clamped_vec := impulse_vec.limit_length(budget_dv * mass)
+	if clamped_vec.length_squared() > 0.0001:
+		apply_impulse(clamped_vec, up_dir * 0.14)
+		_queued_shockwave_dv += clamped_vec.length() / maxf(0.05, mass)
+	if linear_velocity.length() > MAX_SHOCKWAVE_SPEED:
+		linear_velocity = linear_velocity.normalized() * MAX_SHOCKWAVE_SPEED
+	if not has_yielded_smash and impulse_mag >= min_smash_impulse:
+		has_yielded_smash = true
 		if ball != null:
-			ball.notify_smash_target(self_pos, 0.0, chain_depth)
-
-
-func _smash(vel: Vector3) -> void:
-	is_smashed = true
-	_fly_vel = vel
-	_ttl = 0.75
-	if _sensor != null:
-		_sensor.set_deferred("monitoring", false)
+			if ball.has_method("notify_obstacle_impact"):
+				ball.notify_obstacle_impact(self_pos, chain_depth)
+			else:
+				ball.notify_smash_target(self_pos, 0.0, chain_depth)

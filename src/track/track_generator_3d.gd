@@ -9,6 +9,7 @@ const TRACK_SLOPE_PITCH_DEG: float = -11.0
 const START_APRON_LEN: float = 10.0
 const FINISH_RUNWAY_LEN: float = 10.0
 const MIN_RB_CLEARANCE_XZ: float = 1.90
+const MIN_RB_LAYER_DIFF_Y: float = 1.50
 const CHUNK_Z_MARGIN: float = 1.45
 
 var active_chunks: Array[TrackChunkBase] = []
@@ -255,6 +256,8 @@ func _is_rigidbody_pos_clear(pos: Vector3) -> bool:
 	var p2 := Vector2(pos.x, pos.z)
 	for other in active_entities:
 		if other is RigidBody3D and is_instance_valid(other):
+			if absf(pos.y - other.position.y) >= MIN_RB_LAYER_DIFF_Y:
+				continue
 			var o2 := Vector2(other.position.x, other.position.z)
 			if p2.distance_to(o2) < MIN_RB_CLEARANCE_XZ:
 				return false

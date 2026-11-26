@@ -41,6 +41,7 @@ func _ready() -> void:
 		else MaterialLibrary.high_friction_physics(0.72, 0.24)
 	)
 	gravity_scale = 1.0
+	can_sleep = false
 	linear_damp = 0.12 if is_dislodged else 1.2
 	angular_damp = 0.22 if is_dislodged else 1.8
 	contact_monitor = true

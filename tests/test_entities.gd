@@ -181,21 +181,75 @@ func _test_crate_tiers_and_slime_momentum_thresholds() -> void:
 	assert_eq(jolt_crate.collision_layer, 1, "Hit 500g crate stays on collision_layer == 1")
 	assert_eq(jolt_crate.collision_mask, 1, "Hit 500g crate stays on collision_mask == 1")
 
-	# 2. BouncerSlime ("3kg", threshold P >= 22.0)
-	var slime = factory_script.create_bouncer_slime(Vector3(0.0, 0.5, -32.0), 3.0)
+	# 2. BouncerSlime ("3kg" RigidBody3D, R=0.66, bounce=0.88, deterministic patrol, persistent after hit)
+	var slime = factory_script.create_bouncer_slime(Vector3(0.0, 0.66, -32.0), 2.8)
+	var slime_twin = factory_script.create_bouncer_slime(Vector3(0.0, 0.66, -36.0), 2.8)
 	root.add_child(slime)
+	root.add_child(slime_twin)
+	assert_true(slime is RigidBody3D, "BouncerSlime extends RigidBody3D")
+	assert_false(_has_area3d_child(slime), "BouncerSlime has zero Area3D child sensors")
 	assert_eq(str(slime.get_meta("weight_label", "")), "3kg", "BouncerSlime exposes 3kg weight_label")
+	if slime is RigidBody3D:
+		var slime_rb := slime as RigidBody3D
+		assert_approx(slime_rb.mass, 3.0, 0.01, "BouncerSlime mass is 3.0kg")
+		assert_false(slime_rb.freeze, "BouncerSlime stays freeze == false while patrolling")
+		assert_true(slime_rb.lock_rotation, "BouncerSlime locks rotation while patrolling")
+		assert_approx(slime_rb.gravity_scale, 0.0, 0.01, "BouncerSlime gravity_scale is 0.0 while patrolling")
+		assert_true(slime_rb.physics_material_override != null, "BouncerSlime has PhysicsMaterial")
+		if slime_rb.physics_material_override != null:
+			assert_true(slime_rb.physics_material_override.bounce >= 0.85, "BouncerSlime bounce >= 0.85 (0.88)")
+			assert_approx(slime_rb.physics_material_override.friction, 0.45, 0.02, "BouncerSlime friction is 0.45")
 
-	ball.linear_velocity = Vector3(0.0, 0.0, -6.0)
-	ball.step_ball(0.016, 0.0)
-	slime.interact_with_ball(ball)
-	assert_false(slime.is_smashed, "Low momentum (P=9.0 < 22.0) fails to smash BouncerSlime")
-	assert_gt(ball.linear_velocity.z, 2.0, "BouncerSlime knocks low-momentum ball backward (+Z)")
+	assert_true("is_patrolling" in slime and bool(slime.get("is_patrolling")), "BouncerSlime starts with is_patrolling == true")
+	assert_true("is_dislodged" in slime and not bool(slime.get("is_dislodged")), "BouncerSlime starts with is_dislodged == false")
+	assert_true("min_smash_impulse" in slime, "BouncerSlime defines min_smash_impulse")
+	if "min_smash_impulse" in slime:
+		assert_approx(float(slime.get("min_smash_impulse")), 3.2, 0.01, "BouncerSlime min_smash_impulse is 3.2")
 
-	ball.linear_velocity = Vector3(0.0, 0.0, -18.0)
-	ball.step_ball(0.016, 0.0)
-	slime.interact_with_ball(ball)
-	assert_true(slime.is_smashed, "High momentum (P=27.0 >= 22.0) smashes BouncerSlime")
+	slime._physics_process(0.25)
+	slime_twin._physics_process(0.25)
+	assert_gt(slime.position.x, 0.5, "BouncerSlime patrols horizontally along +X before hit")
+	assert_approx(slime.position.x, slime_twin.position.x, 0.0001, "BouncerSlime patrol is 100% deterministic")
+
+	if slime_twin.has_method("on_ball_physical_impact"):
+		assert_false(slime_twin.on_ball_physical_impact(1.4), "Gentle impulse (1.4 < 2.2) does not yield smash on BouncerSlime")
+		assert_true(bool(slime_twin.get("is_patrolling")), "Gentle impulse (< 2.2) keeps BouncerSlime patrolling")
+		assert_false(slime_twin.on_ball_physical_impact(2.5), "Medium impulse (2.5 < 3.2) dislodges BouncerSlime without smash")
+		assert_false(bool(slime_twin.get("is_patrolling")), "Impulse >= 2.2 stops BouncerSlime patrolling")
+		assert_true(bool(slime_twin.get("is_dislodged")), "Impulse >= 2.2 marks BouncerSlime is_dislodged == true")
+		assert_true(slime_twin.on_ball_physical_impact(3.6), "Strong impulse (3.6 >= 3.2) yields smash on BouncerSlime")
+		assert_false(slime_twin.on_ball_physical_impact(4.2), "BouncerSlime yields smash at most once")
+
+	slime_twin.queue_free()
+
+	# Real Jolt 3D collision between 1.5kg PlayerBall3D and 3.0kg BouncerSlime + 90-frame persistence
+	var live_slime = factory_script.create_bouncer_slime(Vector3(0.0, 0.66, -32.0), 0.0)
+	root.add_child(live_slime)
+	await scene_tree.physics_frame
+
+	ball.global_position = Vector3(0.0, 0.55, -30.1)
+	ball.linear_velocity = Vector3(0.0, 0.0, -16.0)
+	ball.angular_velocity = Vector3.ZERO
+	ball._saved_velocity_pre_step = ball.linear_velocity
+
+	for _f in range(12):
+		await scene_tree.physics_frame
+
+	assert_true(live_slime.get("is_dislodged") == true, "Ball collision transitions BouncerSlime to is_dislodged == true")
+	assert_true(live_slime.get("is_patrolling") == false, "Ball collision stops BouncerSlime patrol")
+	if live_slime is RigidBody3D:
+		assert_approx((live_slime as RigidBody3D).gravity_scale, 1.0, 0.01, "Dislodged BouncerSlime restores gravity_scale == 1.0")
+		assert_approx((live_slime as RigidBody3D).linear_damp, 0.12, 0.02, "Dislodged BouncerSlime linear_damp is 0.12")
+		assert_approx((live_slime as RigidBody3D).angular_damp, 0.20, 0.02, "Dislodged BouncerSlime angular_damp is 0.20")
+
+	for _f in range(90):
+		await scene_tree.physics_frame
+
+	assert_true(is_instance_valid(live_slime), "Dislodged BouncerSlime remains valid after 90 physics frames (no TTL)")
+	if is_instance_valid(live_slime) and live_slime is RigidBody3D:
+		assert_true(live_slime.visible, "Dislodged BouncerSlime stays visible")
+		assert_eq((live_slime as RigidBody3D).collision_layer, 1, "Dislodged BouncerSlime keeps collision_layer == 1")
+		assert_eq((live_slime as RigidBody3D).collision_mask, 1, "Dislodged BouncerSlime keeps collision_mask == 1")
 
 	root.queue_free()
 	await scene_tree.process_frame
@@ -347,21 +401,35 @@ func _test_boost_pad_anchored_bumper_and_barrel_rigidbody_chain() -> void:
 	pad.interact_with_ball(ball)
 	assert_lt(ball.linear_velocity.z, -35.0, "BoostPad + Tailwind Sail strongly accelerates ball along -Z")
 
-	# PinballBumper (anchored fixed flange base)
+	# PinballBumper (anchored fixed StaticBody3D, zero Area3D, group "pinball_bumper", bounce >= 0.90)
 	var bumper = factory_script.create_pinball_bumper(Vector3(1.0, 0.6, -20.0))
 	root.add_child(bumper)
+	assert_true(bumper is StaticBody3D, "PinballBumper extends StaticBody3D")
+	assert_false(_has_area3d_child(bumper), "PinballBumper has zero Area3D child sensors")
+	assert_true(bumper.is_in_group("pinball_bumper"), "PinballBumper belongs to group 'pinball_bumper'")
 	assert_eq(
 		bool(bumper.get_meta("is_anchored_fixed", false)),
 		true,
 		"PinballBumper exposes is_anchored_fixed == true"
 	)
-	ball.global_position = Vector3(0.0, 0.6, -19.5)
+	assert_true(bumper.physics_material_override != null, "PinballBumper defines PhysicsMaterial")
+	if bumper.physics_material_override != null:
+		assert_true(bumper.physics_material_override.bounce >= 0.90, "PinballBumper bounce >= 0.90 (0.95)")
+		assert_approx(bumper.physics_material_override.friction, 0.05, 0.02, "PinballBumper friction is 0.05")
+
+	assert_true(bumper.has_method("trigger_bumper_bounce"), "PinballBumper exposes trigger_bumper_bounce(ball, contact_normal)")
+	ball.global_position = Vector3(0.0, 0.6, -20.0)
 	ball.linear_velocity = Vector3(2.0, 0.0, -10.0)
 	ball.step_ball(0.016, 0.0)
-	bumper.interact_with_ball(ball)
-	assert_lt(ball.linear_velocity.z, -30.0, "PinballBumper launches ball forward along -Z")
+	if bumper.has_method("trigger_bumper_bounce"):
+		bumper.trigger_bumper_bounce(ball, Vector3(-1.0, 0.0, 0.0))
+		assert_true(ball.linear_velocity.x <= -8.49, "trigger_bumper_bounce kicks ball radially along contact_normal (>= 8.5 m/s)")
+		assert_lt(ball.linear_velocity.z, -30.0, "trigger_bumper_bounce + Tailwind Sail strongly boosts ball along -Z")
+		var post_first_vz: float = ball.linear_velocity.z
+		bumper.trigger_bumper_bounce(ball, Vector3(-1.0, 0.0, 0.0))
+		assert_approx(ball.linear_velocity.z, post_first_vz, 0.01, "trigger_bumper_bounce respects 0.16s cooldown")
 
-	# ExplosiveBarrel: 1.5kg RigidBody3D + fast RigidBody3D impact detonation + chain-smash
+	# ExplosiveBarrel: 1.5kg RigidBody3D, zero Area3D -> 0.45kg "EMPTY" persistent husk on detonate + shockwave blast
 	var barrel = factory_script.create_explosive_barrel(Vector3(0.0, 0.6, -30.0))
 	var near_crate = factory_script.create_crate(Vector3(1.5, 0.5, -32.0))
 	var near_brute = factory_script.create_shield_brute(Vector3(-1.5, 0.7, -33.0))
@@ -370,39 +438,67 @@ func _test_boost_pad_anchored_bumper_and_barrel_rigidbody_chain() -> void:
 	root.add_child(near_brute)
 
 	assert_true(barrel is RigidBody3D, "ExplosiveBarrel extends RigidBody3D")
+	assert_false(_has_area3d_child(barrel), "ExplosiveBarrel has zero Area3D child sensors")
 	if barrel is RigidBody3D:
-		assert_approx(barrel.mass, 1.5, 0.01, "ExplosiveBarrel mass is 1.5kg")
+		assert_approx(barrel.mass, 1.5, 0.01, "ExplosiveBarrel pre-detonation mass is 1.5kg")
+		assert_true(barrel.contact_monitor, "ExplosiveBarrel enables contact_monitor")
+		assert_true(barrel.max_contacts_reported >= 6, "ExplosiveBarrel max_contacts_reported >= 6")
 	assert_eq(str(barrel.get_meta("weight_label", "")), "1.5kg", "ExplosiveBarrel exposes 1.5kg weight_label")
 
+	var exploded_count := {"n": 0}
+	barrel.barrel_exploded.connect(func(_o: Vector3, _r: float, _f: float, _d: int) -> void: exploded_count["n"] = int(exploded_count["n"]) + 1)
+
 	var entities: Array[Node3D] = [barrel, near_crate, near_brute]
+	await scene_tree.physics_frame
 	ball.global_position = Vector3(0.0, 0.6, -30.8) # slightly in front (-Z) of barrel
 	ball.linear_velocity = Vector3(0.0, 0.0, -10.0)
 	ball.step_ball(0.016, 0.0)
 	barrel.detonate(ball, entities, 0)
+	barrel.detonate(ball, entities, 0)
+	var post_blast_ball_vz: float = ball.linear_velocity.z
+	await scene_tree.physics_frame
 
-	assert_true(barrel.is_detonated, "Barrel marks itself detonated")
+	assert_true(is_instance_valid(barrel), "Detonated ExplosiveBarrel husk is not freed")
+	if is_instance_valid(barrel):
+		assert_true(barrel.is_detonated, "Barrel marks itself detonated")
+		assert_true(barrel.visible, "Detonated ExplosiveBarrel husk remains visible == true")
+		assert_eq(barrel.collision_layer, 1, "Detonated ExplosiveBarrel husk keeps collision_layer == 1")
+		assert_eq(barrel.collision_mask, 1, "Detonated ExplosiveBarrel husk keeps collision_mask == 1")
+		assert_approx(barrel.mass, 0.45, 0.01, "Detonated ExplosiveBarrel husk switches to mass == 0.45kg")
+		assert_eq(str(barrel.get_meta("weight_label", "")), "EMPTY", "Detonated ExplosiveBarrel husk updates weight_label to 'EMPTY'")
+		assert_approx(barrel.linear_damp, 0.14, 0.02, "Detonated ExplosiveBarrel husk linear_damp is 0.14")
+		assert_approx(barrel.angular_damp, 0.24, 0.02, "Detonated ExplosiveBarrel husk angular_damp is 0.24")
+		assert_gt(barrel.linear_velocity.length(), 4.0, "Detonated ExplosiveBarrel husk launches itself with spin/velocity")
+	assert_eq(int(exploded_count["n"]), 1, "ExplosiveBarrel detonates at most once")
 	assert_true(near_crate.get("has_yielded_smash") == true, "Barrel blast shockwave yields smash on nearby CrateObstacle")
 	assert_true(near_brute.get("has_yielded_smash") == true, "Barrel blast shockwave yields smash on nearby ShieldBrute")
+	assert_gt(near_crate.linear_velocity.length(), 2.0, "Barrel shockwave physically blasts nearby CrateObstacle")
+	assert_gt(near_brute.linear_velocity.length(), 0.5, "Barrel shockwave physically blasts nearby ShieldBrute")
 	assert_eq(near_crate.collision_layer, 1, "Shockwaved CrateObstacle remains on collision_layer == 1")
 	assert_eq(near_brute.collision_layer, 1, "Shockwaved ShieldBrute remains on collision_layer == 1")
-	assert_lt(ball.linear_velocity.z, -25.0, "Barrel blast propels ball forward along -Z")
+	assert_lt(post_blast_ball_vz, -25.0, "Barrel blast propels ball forward along -Z")
 
-	# Secondary barrel: ignores static floor / slow RigidBody3D, detonates on fast flying RigidBody3D (> 2.8 m/s)
+	# Secondary barrel: ignores self, static floor, and slow RigidBody3D (<= 2.6 m/s); detonates on > 2.6 m/s or ball contact
 	var barrel_impact = factory_script.create_explosive_barrel(Vector3(3.0, 0.65, -35.0))
 	var flying_crate = factory_script.create_crate(Vector3(3.0, 0.65, -33.0))
+	var dummy_static := StaticBody3D.new()
 	root.add_child(barrel_impact)
 	root.add_child(flying_crate)
+	root.add_child(dummy_static)
 
 	barrel_impact._on_sensor_body_entered(barrel_impact)
 	assert_false(barrel_impact.is_detonated, "ExplosiveBarrel never self-detonates from own RigidBody3D")
+	barrel_impact._on_sensor_body_entered(dummy_static)
+	assert_false(barrel_impact.is_detonated, "StaticBody3D floor contact never detonates ExplosiveBarrel")
 
-	flying_crate.linear_velocity = Vector3(0.0, 0.0, -1.2) # <= 2.8 m/s
+	flying_crate.linear_velocity = Vector3(0.0, 0.0, -2.5) # <= 2.6 m/s
 	barrel_impact._on_sensor_body_entered(flying_crate)
-	assert_false(barrel_impact.is_detonated, "Slow RigidBody3D (<= 2.8 m/s) does not detonate ExplosiveBarrel")
+	assert_false(barrel_impact.is_detonated, "Slow RigidBody3D (<= 2.6 m/s) does not detonate ExplosiveBarrel")
 
-	flying_crate.linear_velocity = Vector3(0.0, 5.0, -14.0) # > 2.8 m/s
+	flying_crate.linear_velocity = Vector3(0.0, 0.0, -3.2) # > 2.6 m/s
 	barrel_impact._on_sensor_body_entered(flying_crate)
-	assert_true(barrel_impact.is_detonated, "Fast flying RigidBody3D (> 2.8 m/s) detonates ExplosiveBarrel")
+	assert_true(barrel_impact.is_detonated, "Fast flying RigidBody3D (> 2.6 m/s) detonates ExplosiveBarrel")
+	assert_approx(barrel_impact.mass, 0.45, 0.01, "Debris-detonated barrel becomes 0.45kg EMPTY husk")
 
 	root.queue_free()
 	await scene_tree.process_frame
@@ -455,7 +551,7 @@ func _test_spring_pad_bonus_ring_and_aerial_blockers() -> void:
 		assert_approx(float(collected_state["seconds"]), 0.8, 0.001, "AerialBonusRing grants +0.8s bonus time")
 		assert_lt(ball.linear_velocity.z, -22.0, "AerialBonusRing strongly boosts forward -Z speed")
 
-	# 3. AerialBlocker: "soft_balloon" (2kg, P>=18) vs "mag_iron" (12kg, P>=36) + deterministic phase
+	# 3. AerialBlocker: "soft_balloon" (0.25kg "250g", bounce>=0.90) vs "mag_iron" (12kg "12kg") RigidBody3D + deterministic phase
 	var has_blocker := _script_has_method(factory_script, "create_aerial_blocker")
 	assert_true(has_blocker, "TrackEntityFactory exposes create_aerial_blocker(pos, blocker_type, initial_phase)")
 	if has_blocker:
@@ -463,7 +559,23 @@ func _test_spring_pad_bonus_ring_and_aerial_blockers() -> void:
 		var balloon_twin = factory_script.create_aerial_blocker(Vector3(0.0, 4.0, -22.0), "soft_balloon", 0.6)
 		root.add_child(balloon)
 		root.add_child(balloon_twin)
-		assert_eq(str(balloon.get_meta("weight_label", "")), "2kg", "soft_balloon AerialBlocker exposes 2kg label")
+
+		assert_true(balloon is RigidBody3D, "soft_balloon AerialBlocker extends RigidBody3D")
+		assert_false(_has_area3d_child(balloon), "soft_balloon AerialBlocker has zero Area3D child sensors")
+		assert_eq(str(balloon.get_meta("weight_label", "")), "250g", "soft_balloon AerialBlocker exposes 250g label")
+		if balloon is RigidBody3D:
+			var b_rb := balloon as RigidBody3D
+			assert_approx(b_rb.mass, 0.25, 0.01, "soft_balloon mass is 0.25kg")
+			assert_false(b_rb.freeze, "soft_balloon stays freeze == false while tethered")
+			assert_approx(b_rb.gravity_scale, 0.0, 0.01, "soft_balloon gravity_scale is 0.0 while tethered")
+			assert_true(b_rb.physics_material_override != null, "soft_balloon has PhysicsMaterial")
+			if b_rb.physics_material_override != null:
+				assert_true(b_rb.physics_material_override.bounce >= 0.90, "soft_balloon bounce >= 0.90 (0.92)")
+				assert_approx(b_rb.physics_material_override.friction, 0.35, 0.02, "soft_balloon friction is 0.35")
+
+		assert_true("is_tethered" in balloon and bool(balloon.get("is_tethered")), "soft_balloon starts tethered")
+		if "min_smash_impulse" in balloon:
+			assert_approx(float(balloon.get("min_smash_impulse")), 0.8, 0.01, "soft_balloon min_smash_impulse is 0.8")
 
 		balloon._physics_process(0.25)
 		balloon_twin._physics_process(0.25)
@@ -474,40 +586,45 @@ func _test_spring_pad_bonus_ring_and_aerial_blockers() -> void:
 			"AerialBlocker bobbing/swaying is 100% deterministic for identical initial_phase"
 		)
 
-		ball.global_position = Vector3(0.2, 4.0, -21.5)
-		ball.linear_velocity = Vector3(0.0, 1.0, -8.0) # P = 12.0 < 18.0
-		ball.step_ball(0.016, 0.0)
-		balloon.interact_with_ball(ball)
-		assert_false(balloon.is_smashed, "Low momentum (P=12 < 18) does not smash 2kg soft_balloon")
-		assert_gt(ball.linear_velocity.z, 3.0, "soft_balloon bounces low-momentum ball back (+Z >= 3.5)")
-		assert_gt(absf(ball.linear_velocity.x), 5.0, "soft_balloon pushes low-momentum ball sideways (±5.5)")
-
-		ball.linear_velocity = Vector3(0.0, 0.0, -15.0) # P = 22.5 >= 18.0
-		ball.step_ball(0.016, 0.0)
-		balloon.interact_with_ball(ball)
-		assert_true(balloon.is_smashed, "Momentum P=22.5 >= 18.0 smashes 2kg soft_balloon")
-		assert_lt(ball.linear_velocity.z, -13.5, "Smashing soft_balloon loses only ~6% speed")
+		if balloon.has_method("on_ball_physical_impact"):
+			assert_false(balloon.on_ball_physical_impact(0.6), "Impulse 0.6 (< 0.8) untethers balloon without yielding smash")
+			assert_false(bool(balloon.get("is_tethered")), "Impulse >= 0.5 untethers soft_balloon")
+			if balloon is RigidBody3D:
+				assert_approx((balloon as RigidBody3D).gravity_scale, 0.28, 0.02, "Untethered soft_balloon floats at gravity_scale ~ 0.28")
+				assert_approx((balloon as RigidBody3D).linear_damp, 0.48, 0.02, "Untethered soft_balloon linear_damp is 0.48")
+			assert_true(balloon.on_ball_physical_impact(1.1), "Impulse 1.1 (>= 0.8) yields smash on soft_balloon")
+			assert_false(balloon.on_ball_physical_impact(1.5), "soft_balloon yields smash at most once")
 
 		var mag_iron = factory_script.create_aerial_blocker(Vector3(0.0, 4.2, -26.0), "mag_iron", 1.2)
 		root.add_child(mag_iron)
+		assert_true(mag_iron is RigidBody3D, "mag_iron AerialBlocker extends RigidBody3D")
+		assert_false(_has_area3d_child(mag_iron), "mag_iron AerialBlocker has zero Area3D child sensors")
 		assert_eq(str(mag_iron.get_meta("weight_label", "")), "12kg", "mag_iron AerialBlocker exposes 12kg label")
+		if mag_iron is RigidBody3D:
+			var m_rb := mag_iron as RigidBody3D
+			assert_approx(m_rb.mass, 12.0, 0.01, "mag_iron mass is 12.0kg")
+			assert_false(m_rb.freeze, "mag_iron stays freeze == false while tethered")
+			assert_approx(m_rb.gravity_scale, 0.0, 0.01, "mag_iron gravity_scale is 0.0 while tethered")
 
-		ball.linear_velocity = Vector3(0.0, 3.0, -16.0) # P ~ 24.4 < 36.0
-		ball.step_ball(0.016, 0.0)
-		mag_iron.interact_with_ball(ball)
-		assert_false(mag_iron.is_smashed, "Medium momentum (P~24.4 < 36) blocked by 12kg mag_iron")
-		assert_gt(ball.linear_velocity.z, -5.5, "mag_iron stalls aerial forward speed by ~70%")
-		assert_lt(ball.linear_velocity.y, -2.4, "mag_iron forces aerial ball downward (vy <= -2.5)")
+		if "min_smash_impulse" in mag_iron:
+			assert_approx(float(mag_iron.get("min_smash_impulse")), 4.5, 0.01, "mag_iron min_smash_impulse is 4.5")
 
-		ball.linear_velocity = Vector3(0.0, 0.0, -28.0) # P = 42.0 >= 36.0
-		ball.step_ball(0.016, 0.0)
-		mag_iron.interact_with_ball(ball)
-		assert_true(mag_iron.is_smashed, "High momentum (P=42 >= 36) smashes 12kg mag_iron")
+		if mag_iron.has_method("on_ball_physical_impact"):
+			assert_false(mag_iron.on_ball_physical_impact(3.0), "Impulse 3.0 (< 4.5) does not untether or smash 12kg mag_iron")
+			assert_true(bool(mag_iron.get("is_tethered")), "mag_iron stays tethered below 4.5 impulse")
+			assert_true(mag_iron.on_ball_physical_impact(5.2), "Impulse 5.2 (>= 4.5) untethers and smashes 12kg mag_iron")
+			assert_false(bool(mag_iron.get("is_tethered")), "mag_iron untethers at >= 4.5 impulse")
+			if mag_iron is RigidBody3D:
+				assert_approx((mag_iron as RigidBody3D).gravity_scale, 1.0, 0.01, "Untethered mag_iron restores gravity_scale == 1.0")
+				assert_approx((mag_iron as RigidBody3D).linear_damp, 0.14, 0.02, "Untethered mag_iron linear_damp is 0.14")
+			if "_mag_ring" in mag_iron and mag_iron.get("_mag_ring") != null:
+				assert_false((mag_iron.get("_mag_ring") as Node3D).visible, "Untethered mag_iron hides _mag_ring")
 
 		var mag_iron_wave = factory_script.create_aerial_blocker(Vector3(1.5, 4.2, -27.0), "mag_iron", 0.0)
 		root.add_child(mag_iron_wave)
 		mag_iron_wave.apply_shockwave(Vector3(1.0, 4.0, -26.5), 6.5, 25.0, 1, ball)
-		assert_true(mag_iron_wave.is_smashed, "Shockwave smashes mag_iron AerialBlocker")
+		assert_true(mag_iron_wave.get("is_tethered") == false, "Shockwave untethers mag_iron AerialBlocker")
+		assert_true(mag_iron_wave.get("has_yielded_smash") == true, "Shockwave yields smash on mag_iron AerialBlocker")
 
 	root.queue_free()
 	await scene_tree.process_frame
@@ -535,9 +652,9 @@ func _test_sloped_floor_stability_and_flying_debris_barrel_hit() -> void:
 	floor_body.physics_material_override = mat_script.high_friction_physics(0.90, 0.10)
 	var floor_col := CollisionShape3D.new()
 	var floor_box := BoxShape3D.new()
-	floor_box.size = Vector3(14.0, 0.6, 40.0)
+	floor_box.size = Vector3(16.0, 0.6, 70.0)
 	floor_col.shape = floor_box
-	floor_col.position = Vector3(0.0, -0.3, -15.0)
+	floor_col.position = Vector3(0.0, -0.3, -30.0)
 	floor_body.add_child(floor_col)
 	sloped_root.add_child(floor_body)
 
@@ -587,48 +704,68 @@ func _test_sloped_floor_stability_and_flying_debris_barrel_hit() -> void:
 		assert_lt(min_pin_up_dot, 0.75, "800g WoodenPin topples dramatically (up_dot < 0.75) when struck by rolling 1.5kg ball")
 		assert_true(is_instance_valid(pin), "Toppled WoodenPin remains persistently on the sloped track")
 
-	var slope_slime = factory_script.create_bouncer_slime(Vector3(0.0, 0.65, -18.0), 0.0)
-	sloped_root.add_child(slope_slime)
-	slope_ball.global_position = sloped_root.to_global(Vector3(0.0, 0.55, -17.2))
-	slope_ball.linear_velocity = (
-		-sloped_root.global_transform.basis.z.normalized() * 6.0
-		- sloped_root.global_transform.basis.y.normalized() * 2.0
-	)
-	slope_ball.step_ball(0.016, 0.0)
-	slope_slime.interact_with_ball(slope_ball)
-	assert_gt(
-		slope_ball.linear_velocity.dot(sloped_root.global_transform.basis.z.normalized()),
-		7.5,
-		"BouncerSlime rebounds uphill along sloped track +Z"
-	)
-	assert_gt(
-		slope_ball.linear_velocity.dot(sloped_root.global_transform.basis.y.normalized()),
-		1.4,
-		"BouncerSlime clears downward into-slope velocity and lifts cleanly along sloped +Y"
-	)
-
-	# Launch a dislodged flying crate directly toward a target ExplosiveBarrel across physics frames
-	var target_barrel = factory_script.create_explosive_barrel(Vector3(0.0, 2.5, -24.0))
-	target_barrel.gravity_scale = 0.0
-	var flying_crate = factory_script.create_crate(Vector3(0.0, 2.5, -21.5), "light")
-	root.add_child(target_barrel)
-	root.add_child(flying_crate)
+	# Real Jolt 3D collision on sloped floor: untethered soft_balloon floats gently while mag_iron drops onto floor,
+	# and fast CrateObstacle detonates ExplosiveBarrel into a persistent 0.45kg EMPTY husk across 90 physics frames!
+	var drop_balloon = factory_script.create_aerial_blocker(Vector3(-4.2, 3.2, -16.0), "soft_balloon", 0.0)
+	var drop_iron = factory_script.create_aerial_blocker(Vector3(4.2, 3.2, -16.0), "mag_iron", 0.0)
+	var husk_barrel = factory_script.create_explosive_barrel(Vector3(0.0, 0.65, -20.0))
+	var fast_crate = factory_script.create_crate(Vector3(0.0, 0.55, -17.5), "light")
+	sloped_root.add_child(drop_balloon)
+	sloped_root.add_child(drop_iron)
+	sloped_root.add_child(husk_barrel)
+	sloped_root.add_child(fast_crate)
 	await scene_tree.physics_frame
 
-	if flying_crate.has_method("dislodge"):
-		flying_crate.dislodge()
-	flying_crate.gravity_scale = 0.0
-	flying_crate.linear_velocity = Vector3(0.0, 0.0, -20.0)
+	if drop_balloon.has_method("untether"):
+		drop_balloon.untether()
+	if drop_iron.has_method("untether"):
+		drop_iron.untether()
+	if fast_crate.has_method("dislodge"):
+		fast_crate.dislodge()
+	fast_crate.linear_velocity = -sloped_root.global_transform.basis.z.normalized() * 22.0
 
-	for _f in range(15):
+	for _f in range(18):
 		await scene_tree.physics_frame
-		if target_barrel.is_detonated:
-			break
 
-	assert_true(
-		target_barrel.is_detonated,
-		"Dislodged flying CrateObstacle triggers ExplosiveBarrel in real 3D physics"
+	assert_gt(
+		drop_balloon.position.y,
+		drop_iron.position.y + 0.45,
+		"Untethered 250g soft_balloon floats gently while 12kg mag_iron drops rapidly under full gravity"
 	)
+	assert_true(is_instance_valid(husk_barrel), "Detonated ExplosiveBarrel husk stays alive in scene")
+	if is_instance_valid(husk_barrel):
+		assert_true(
+			husk_barrel.is_detonated,
+			"Dislodged flying CrateObstacle (> 2.6 m/s) detonates ExplosiveBarrel on real 3D contact"
+		)
+		assert_approx(husk_barrel.mass, 0.45, 0.01, "Detonated barrel on slope switches to 0.45kg")
+		assert_eq(str(husk_barrel.get_meta("weight_label", "")), "EMPTY", "Detonated barrel on slope switches label to EMPTY")
+
+	# Also verify real PlayerBall3D contact detonates a second ExplosiveBarrel
+	var ball_contact_barrel = factory_script.create_explosive_barrel(Vector3(-2.5, 0.65, -26.0))
+	sloped_root.add_child(ball_contact_barrel)
+	await scene_tree.physics_frame
+	slope_ball.global_position = sloped_root.to_global(Vector3(-2.5, 0.55, -24.2))
+	slope_ball.linear_velocity = -sloped_root.global_transform.basis.z.normalized() * 14.0
+	slope_ball._saved_velocity_pre_step = slope_ball.linear_velocity
+
+	for _f in range(72):
+		await scene_tree.physics_frame
+
+	assert_true(is_instance_valid(ball_contact_barrel), "Ball-detonated ExplosiveBarrel husk persists after 72 frames")
+	if is_instance_valid(ball_contact_barrel):
+		assert_true(ball_contact_barrel.is_detonated, "Real PlayerBall3D contact detonates ExplosiveBarrel")
+	assert_true(is_instance_valid(drop_balloon), "Untethered soft_balloon persists after 90 physics frames")
+	assert_true(is_instance_valid(drop_iron), "Untethered 12kg mag_iron persists on sloped floor after 90 physics frames")
+	if is_instance_valid(drop_iron):
+		assert_gt(drop_iron.position.y, 0.30, "12kg mag_iron collides with sloped floor without falling through")
+		assert_lt(drop_iron.position.y, 1.35, "12kg mag_iron rests/slides on sloped floor surface")
+	assert_true(is_instance_valid(husk_barrel), "0.45kg EMPTY ExplosiveBarrel husk persists after 90 physics frames")
+	if is_instance_valid(husk_barrel):
+		assert_true(husk_barrel.visible, "0.45kg EMPTY barrel husk stays visible after 90 physics frames")
+		assert_eq(husk_barrel.collision_layer, 1, "0.45kg EMPTY barrel husk keeps collision_layer == 1")
+		assert_eq(husk_barrel.collision_mask, 1, "0.45kg EMPTY barrel husk keeps collision_mask == 1")
+		assert_gt(husk_barrel.position.y, 0.25, "0.45kg EMPTY barrel husk collides with sloped floor across 90 frames")
 
 	root.queue_free()
 	await scene_tree.process_frame

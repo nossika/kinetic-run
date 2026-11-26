@@ -2,6 +2,8 @@ class_name PinballBumper
 extends StaticBody3D
 
 const BUMPER_IMPULSE_PER_KG: float = 14.0
+const BUMPER_COOLDOWN: float = 0.16
+const MIN_RADIAL_KICK_SPEED: float = 8.5
 
 var is_anchored_fixed: bool = true
 var _cooldown: float = 0.0
@@ -11,9 +13,14 @@ var _cushion_ring: MeshInstance3D = null
 
 func _init() -> void:
 	set_meta("is_anchored_fixed", true)
+	add_to_group("pinball_bumper")
+	physics_material_override = MaterialLibrary.high_friction_physics(0.05, 0.95)
 
 
 func _ready() -> void:
+	add_to_group("pinball_bumper")
+	physics_material_override = MaterialLibrary.high_friction_physics(0.05, 0.95)
+
 	var col := CollisionShape3D.new()
 	var cyl_shape := CylinderShape3D.new()
 	cyl_shape.radius = 0.72
@@ -67,16 +74,30 @@ func _ready() -> void:
 	RenderHelper.attach_mesh(_cushion_ring, ring_mesh)
 	_cushion_ring.position = Vector3(0.0, 0.08, 0.0)
 	add_child(_cushion_ring)
+	call_deferred("_bind_ball_contact_fallback")
 
-	var sensor := Area3D.new()
-	var s_col := CollisionShape3D.new()
-	var s_cyl := CylinderShape3D.new()
-	s_cyl.radius = 0.95
-	s_cyl.height = 1.4
-	s_col.shape = s_cyl
-	sensor.add_child(s_col)
-	sensor.body_entered.connect(_on_sensor_body_entered)
-	add_child(sensor)
+
+func _bind_ball_contact_fallback() -> void:
+	if not is_inside_tree():
+		return
+	var p := get_parent()
+	while p != null:
+		for ch in p.get_children():
+			if ch is PlayerBall3D:
+				var ball := ch as PlayerBall3D
+				var cb := Callable(self, "_on_ball_body_entered").bind(ball)
+				if not ball.body_entered.is_connected(cb):
+					ball.body_entered.connect(cb)
+				return
+		if p.get_parent() == get_tree().root:
+			break
+		p = p.get_parent()
+
+
+func _on_ball_body_entered(collided_body: Node, ball: PlayerBall3D) -> void:
+	if collided_body != self or ball == null or ball.is_respawning or ball.has_method("notify_obstacle_impact"):
+		return
+	interact_with_ball(ball)
 
 
 func _physics_process(delta: float) -> void:
@@ -87,18 +108,36 @@ func _physics_process(delta: float) -> void:
 		_cushion_ring.scale = Vector3(1.0 + expand, 1.0 - expand * 0.4, 1.0 + expand)
 
 
-func _on_sensor_body_entered(body: Node) -> void:
-	if body is PlayerBall3D and _cooldown <= 0.0:
-		_cooldown = 0.18
-		interact_with_ball(body as PlayerBall3D)
+func trigger_bumper_bounce(ball: PlayerBall3D, contact_normal: Vector3) -> void:
+	if ball == null or ball.is_respawning or _cooldown > 0.0:
+		return
+	_cooldown = BUMPER_COOLDOWN
+	_ring_pulse = 1.0
+	var self_pos := global_position if is_inside_tree() else position
+	var ball_pos := ball.global_position if ball.is_inside_tree() else ball.position
+	var horiz_n := Vector3(contact_normal.x, 0.0, contact_normal.z)
+	if horiz_n.length_squared() < 0.0001:
+		var diff := ball_pos - self_pos
+		diff.y = 0.0
+		horiz_n = diff.normalized() if diff.length_squared() > 0.0001 else Vector3.RIGHT
+	else:
+		horiz_n = horiz_n.normalized()
+	var radial_diff := Vector3(ball_pos.x - self_pos.x, 0.0, ball_pos.z - self_pos.z)
+	if radial_diff.length_squared() > 0.001 and horiz_n.dot(radial_diff) < 0.0:
+		horiz_n = -horiz_n
+
+	var v_rad := ball.linear_velocity.dot(horiz_n)
+	if v_rad < MIN_RADIAL_KICK_SPEED:
+		ball.linear_velocity += horiz_n * (MIN_RADIAL_KICK_SPEED - v_rad)
+	ball.notify_wall_or_bumper_bounce(horiz_n, self_pos, BUMPER_IMPULSE_PER_KG * ball.mass)
 
 
 func interact_with_ball(ball: PlayerBall3D) -> void:
-	if ball == null or ball.is_respawning:
+	if ball == null:
 		return
-	_ring_pulse = 1.0
-	var diff := ball.global_position - global_position
+	var self_pos := global_position if is_inside_tree() else position
+	var ball_pos := ball.global_position if ball.is_inside_tree() else ball.position
+	var diff := ball_pos - self_pos
 	diff.y = 0.0
-	var normal := diff.normalized() if diff.length_squared() > 0.001 else Vector3.RIGHT
-	ball.linear_velocity.x = normal.x * maxf(8.5, absf(ball.linear_velocity.x))
-	ball.notify_wall_or_bumper_bounce(normal, global_position, BUMPER_IMPULSE_PER_KG * ball.mass)
+	var normal := diff.normalized() if diff.length_squared() > 0.0001 else Vector3.RIGHT
+	trigger_bumper_bounce(ball, normal)
