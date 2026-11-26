@@ -13,7 +13,8 @@ func _ready() -> void:
 
 	var mesh_inst := MeshInstance3D.new()
 	var pebble := ClayMeshBuilder.make_pebble_pad(zone_size, 0.10, 28)
-	var jelly_mat := MaterialLibrary.make_jelly_outer_material(Color(0.50, 0.88, 0.46, 0.68))
+	var jelly_mat := MaterialLibrary.make_jelly_outer_material(Color(0.66, 0.30, 0.88, 0.70))
+	jelly_mat.next_pass = null
 	ClayMeshBuilder.assign_mesh(mesh_inst, pebble, jelly_mat)
 	add_child(mesh_inst)
 

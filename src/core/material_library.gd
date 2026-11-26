@@ -15,10 +15,11 @@ const TEX_BALL_LIVERY_SWIRL: String = "res://assets/textures/ball_livery_swirl.p
 const TEX_BALL_LIVERY_POLKA: String = "res://assets/textures/ball_livery_polka.png"
 const BUNDLED_FONT_PATH: String = "res://assets/fonts/game_ui_zh.ttf"
 
-const DEFAULT_OUTLINE_COLOR: Color = Color(0.22, 0.14, 0.09, 1.0)
+const DEFAULT_OUTLINE_COLOR: Color = Color(0.18, 0.10, 0.06, 1.0)
 
 static var _texture_cache: Dictionary = {}
 static var _outline_cache: Dictionary = {}
+static var _outline_shader: Shader = null
 static var _cached_font: Font = null
 static var _font_loaded: bool = false
 
@@ -58,20 +59,35 @@ static func _new_base_material() -> StandardMaterial3D:
 	return mat
 
 
+static func _get_outline_shader() -> Shader:
+	if _outline_shader == null:
+		_outline_shader = Shader.new()
+		_outline_shader.code = """shader_type spatial;
+render_mode unshaded, cull_front;
+uniform vec4 outline_color : source_color = vec4(0.18, 0.10, 0.06, 1.0);
+uniform float outline_width = 0.036;
+void vertex() {
+	VERTEX += NORMAL * outline_width;
+}
+void fragment() {
+	ALBEDO = outline_color.rgb;
+}
+"""
+	return _outline_shader
+
+
 static func make_toon_outline_material(
-	thickness: float = 0.026,
+	thickness: float = 0.036,
 	outline_color: Color = DEFAULT_OUTLINE_COLOR
-) -> StandardMaterial3D:
+) -> ShaderMaterial:
 	var q_thick := int(round(thickness * 1000.0))
 	var key := "%d_%d" % [q_thick, outline_color.to_rgba32()]
 	if _outline_cache.has(key):
-		return _outline_cache[key] as StandardMaterial3D
-	var out_mat := StandardMaterial3D.new()
-	out_mat.cull_mode = BaseMaterial3D.CULL_FRONT
-	out_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	out_mat.albedo_color = outline_color
-	out_mat.grow = true
-	out_mat.grow_amount = maxf(0.008, thickness)
+		return _outline_cache[key] as ShaderMaterial
+	var out_mat := ShaderMaterial.new()
+	out_mat.shader = _get_outline_shader()
+	out_mat.set_shader_parameter("outline_color", outline_color)
+	out_mat.set_shader_parameter("outline_width", maxf(0.012, thickness))
 	_outline_cache[key] = out_mat
 	return out_mat
 
@@ -85,7 +101,7 @@ static func high_friction_physics(friction_val: float = 0.88, bounce_val: float 
 
 static func make_beechwood_material(tint: Color = Color.WHITE) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	var warm_maple := Color(0.90, 0.78, 0.63, 1.0)
+	var warm_maple := Color(0.62, 0.45, 0.30, 1.0)
 	mat.albedo_color = Color(
 		tint.r * warm_maple.r,
 		tint.g * warm_maple.g,
@@ -94,15 +110,15 @@ static func make_beechwood_material(tint: Color = Color.WHITE) -> StandardMateri
 	)
 	mat.albedo_texture = _load_cached_texture(TEX_TRACK_BEECHWOOD)
 	mat.metallic = 0.0
-	mat.metallic_specular = 0.08
-	mat.roughness = 0.80
+	mat.metallic_specular = 0.06
+	mat.roughness = 0.84
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3(0.18, 0.18, 0.18)
 	mat.uv1_triplanar_sharpness = 3.2
 	return mat
 
 
-static func make_workbench_material(tint: Color = Color(0.86, 0.75, 0.62)) -> StandardMaterial3D:
+static func make_workbench_material(tint: Color = Color(0.50, 0.35, 0.22)) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_color = tint
 	mat.albedo_texture = _load_cached_texture(TEX_TRACK_BEECHWOOD)
@@ -116,13 +132,13 @@ static func make_workbench_material(tint: Color = Color(0.86, 0.75, 0.62)) -> St
 	return mat
 
 
-static func make_ceramic_pin_material(tint: Color = Color(0.98, 0.97, 0.94)) -> StandardMaterial3D:
+static func make_ceramic_pin_material(tint: Color = Color(0.99, 0.98, 0.95)) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.albedo_color = tint
 	mat.metallic = 0.02
 	mat.roughness = 0.28
 	mat.metallic_specular = 0.48
-	mat.next_pass = make_toon_outline_material(0.022)
+	mat.next_pass = make_toon_outline_material(0.026)
 	return mat
 
 
@@ -144,18 +160,18 @@ static func make_wood_crate_material(is_heavy: bool) -> StandardMaterial3D:
 	mat.uv1_scale = Vector3(3.0, 2.0, 1.0)
 	if is_heavy:
 		mat.albedo_texture = _load_cached_texture(TEX_CRATE_BALSA_WOOD)
-		mat.albedo_color = Color(0.56, 0.35, 0.21)
+		mat.albedo_color = Color(0.68, 0.18, 0.16)
 		mat.metallic = 0.04
 		mat.metallic_specular = 0.16
 		mat.roughness = 0.64
-		mat.next_pass = make_toon_outline_material(0.030)
+		mat.next_pass = make_toon_outline_material(0.040)
 	else:
 		mat.albedo_texture = _load_cached_texture(TEX_CRATE_PAINTED_BLUE)
-		mat.albedo_color = Color(1.0, 1.0, 1.0)
+		mat.albedo_color = Color(0.82, 0.88, 0.98)
 		mat.metallic = 0.0
 		mat.metallic_specular = 0.18
 		mat.roughness = 0.60
-		mat.next_pass = make_toon_outline_material(0.026)
+		mat.next_pass = make_toon_outline_material(0.036)
 	return mat
 
 
@@ -177,7 +193,7 @@ static func make_cast_iron_material(tint: Color = Color(0.24, 0.33, 0.52)) -> St
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3(0.55, 0.55, 0.55)
 	mat.uv1_triplanar_sharpness = 3.2
-	mat.next_pass = make_toon_outline_material(0.028)
+	mat.next_pass = make_toon_outline_material(0.036)
 	return mat
 
 
@@ -191,7 +207,6 @@ static func make_tungsten_ball_material() -> StandardMaterial3D:
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3(0.9, 0.9, 0.9)
 	mat.uv1_triplanar_sharpness = 3.2
-	mat.next_pass = make_toon_outline_material(0.028)
 	return mat
 
 
@@ -205,10 +220,10 @@ static func make_starter_ball_material(
 		tex = _load_cached_texture(TEX_BALL_LIVERY_BEACH)
 	mat.albedo_texture = tex
 	mat.albedo_color = tint
+	mat.uv1_scale = Vector3(2.0, 2.0, 1.0)
 	mat.metallic = 0.04
 	mat.roughness = 0.34
 	mat.metallic_specular = 0.46
-	mat.next_pass = make_toon_outline_material(0.028)
 	return mat
 
 
@@ -220,7 +235,7 @@ static func make_retro_barrel_material() -> StandardMaterial3D:
 	mat.uv1_scale = Vector3(1.0, 2.0, 1.0)
 	mat.metallic = 0.08
 	mat.roughness = 0.48
-	mat.next_pass = make_toon_outline_material(0.028)
+	mat.next_pass = make_toon_outline_material(0.034)
 	return mat
 
 
@@ -234,7 +249,7 @@ static func make_charred_husk_material() -> StandardMaterial3D:
 	mat.uv1_triplanar = true
 	mat.uv1_scale = Vector3(0.75, 0.75, 0.75)
 	mat.uv1_triplanar_sharpness = 3.2
-	mat.next_pass = make_toon_outline_material(0.024)
+	mat.next_pass = make_toon_outline_material(0.030)
 	return mat
 
 
@@ -244,7 +259,6 @@ static func make_pin_stripe_material(color: Color = Color(0.90, 0.20, 0.20)) -> 
 	mat.metallic = 0.04
 	mat.roughness = 0.26
 	mat.metallic_specular = 0.48
-	mat.next_pass = make_toon_outline_material(0.016)
 	return mat
 
 
@@ -255,14 +269,14 @@ static func make_silicone_soft_material(color: Color, with_outline: bool = true)
 	mat.roughness = 0.82
 	mat.metallic_specular = 0.20
 	if with_outline:
-		mat.next_pass = make_toon_outline_material(0.024)
+		mat.next_pass = make_toon_outline_material(0.030)
 	return mat
 
 
 static func make_jelly_outer_material(color: Color) -> StandardMaterial3D:
 	var mat := _new_base_material()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var alpha := color.a if color.a < 0.99 else 0.74
+	var alpha := color.a if color.a < 0.99 else 0.78
 	var tex := _load_cached_texture(TEX_JELLY_BUBBLE_SOFT)
 	mat.albedo_texture = tex
 	mat.albedo_color = Color(color.r, color.g, color.b, alpha)
@@ -270,7 +284,7 @@ static func make_jelly_outer_material(color: Color) -> StandardMaterial3D:
 	mat.roughness = 0.14
 	mat.metallic_specular = 0.72
 	mat.uv1_scale = Vector3(1.2, 1.2, 1.2)
-	mat.next_pass = make_toon_outline_material(0.024, Color(0.14, 0.26, 0.18, 1.0))
+	mat.next_pass = make_toon_outline_material(0.032, Color(0.10, 0.30, 0.16, 1.0))
 	return mat
 
 

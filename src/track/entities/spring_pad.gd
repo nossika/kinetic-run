@@ -53,7 +53,7 @@ func _ready() -> void:
 
 		var pad_inst := MeshInstance3D.new()
 		var pad_cyl := ClayMeshBuilder.make_chamfered_cylinder(1.02, 1.06, 0.16, 0.065, 24)
-		var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.96, 0.46, 0.18))
+		var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.86, 0.24, 0.56))
 		ClayMeshBuilder.assign_mesh(pad_inst, pad_cyl, pad_mat)
 		_top_pad.add_child(pad_inst)
 

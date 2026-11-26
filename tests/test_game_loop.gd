@@ -20,9 +20,46 @@ func _test_main_scene_boots_and_rolls_forward() -> void:
 	scene_tree.root.add_child(world)
 	await scene_tree.physics_frame
 
-	assert_eq(world.game_state, "RACING", "Game starts in RACING state")
-	assert_eq(world.run_state.current_level, 1, "Starts on Level 1")
-	assert_approx(world.run_state.time_remaining, 30.0, 0.2, "Starts with ~30.0s countdown")
+	assert_eq(world.game_state, "START_SCREEN", "Game boots into START_SCREEN with pre-generated seed and 3 starter balls")
+	assert_true(world.run_state.seed_text != "", "Boot automatically generates non-empty random seed")
+	assert_eq(world.current_starter_balls.size(), 3, "Start screen rolls 3 starter ball options from seed")
+	assert_true(world.start_screen_panel != null and world.start_screen_panel.visible, "StartScreenPanel is visible on boot")
+	assert_false(world.hud_overlay.visible, "HudOverlay is hidden while on START_SCREEN")
+
+	var boot_z: float = world.player_ball.global_position.z
+	for _i in range(10):
+		await scene_tree.physics_frame
+	assert_approx(world.player_ball.global_position.z, boot_z, 0.01, "Ball stays paused at start gate while on START_SCREEN")
+
+	# Changing seed on START_SCREEN deterministically regenerates starter balls & track
+	world.set_start_screen_seed_text("STORY_START_101")
+	var snap_101_names: Array[String] = [
+		world.current_starter_balls[0].display_name,
+		world.current_starter_balls[1].display_name,
+		world.current_starter_balls[2].display_name,
+	]
+	world.set_start_screen_seed_text("STORY_START_202")
+	var snap_202_names: Array[String] = [
+		world.current_starter_balls[0].display_name,
+		world.current_starter_balls[1].display_name,
+		world.current_starter_balls[2].display_name,
+	]
+	assert_true(snap_101_names != snap_202_names, "Changing seed on StartScreen regenerates the 3 starter balls")
+	world.set_start_screen_seed_text("STORY_START_101")
+	assert_eq(
+		world.current_starter_balls[1].display_name,
+		snap_101_names[1],
+		"Re-entering same seed on StartScreen reproduces identical starter balls"
+	)
+
+	# Selecting starter ball 1 launches RACING with that ball's physical attributes
+	var picked_ball = world.current_starter_balls[1]
+	world.select_starter_ball(1)
+	assert_eq(world.game_state, "RACING", "Selecting a starter ball enters RACING state")
+	assert_false(world.start_screen_panel.visible, "StartScreenPanel hides once RACING begins")
+	assert_true(world.hud_overlay.visible, "HudOverlay becomes visible in RACING")
+	assert_approx(world.player_ball.mass, picked_ball.mass, 0.01, "Selected starter ball mass applied to PlayerBall3D")
+	assert_approx(world.run_state.time_remaining, 30.0, 0.2, "RACING starts with ~30.0s countdown")
 	assert_true(
 		world.get_node_or_null("WorkbenchBackdrop") == null,
 		"Cluttered gridded WorkbenchBackdrop is removed in storybook environment"
@@ -30,16 +67,16 @@ func _test_main_scene_boots_and_rolls_forward() -> void:
 	var wenv := world.get_node_or_null("WorldEnvironment") as WorldEnvironment
 	assert_true(wenv != null and wenv.environment != null, "WorldEnvironment configured")
 	if wenv != null and wenv.environment != null:
-		assert_true(wenv.environment.fog_enabled, "Warm storybook depth fog is enabled")
+		assert_true(wenv.environment.fog_enabled, "Horizon depth fog is enabled")
 
 	var z_start: float = world.player_ball.global_position.z
-	for _i in range(25):
+	for _i in range(28):
 		await scene_tree.physics_frame
 
 	assert_lt(
 		world.player_ball.global_position.z,
 		z_start - 1.5,
-		"PlayerBall3D automatically rolls forward along -Z under sloped gravity"
+		"Selected starter ball rolls forward along -Z under sloped gravity"
 	)
 
 	world.queue_free()
@@ -54,6 +91,7 @@ func _test_finish_draft_next_level_and_timeout_restart() -> void:
 	var world = main_packed.instantiate()
 	scene_tree.root.add_child(world)
 	await scene_tree.physics_frame
+	world.select_starter_ball(0)
 
 	var level1_finish_z: float = world.track_generator.finish_z
 
@@ -429,17 +467,18 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	scene_tree.root.add_child(world)
 	await scene_tree.physics_frame
 
-	assert_true(world.hud_overlay.has_signal("seed_submitted"), "HudOverlay defines signal seed_submitted")
-	assert_true(world.hud_overlay.has_signal("seed_dialog_toggled"), "HudOverlay defines signal seed_dialog_toggled")
+	assert_true(
+		world.hud_overlay.get_node_or_null("SeedModal") == null,
+		"Mid-run SeedModal is removed from HudOverlay (seed lives on StartScreen)"
+	)
+	assert_false(
+		world.hud_overlay.has_method("open_seed_dialog"),
+		"HudOverlay no longer exposes mid-run open_seed_dialog"
+	)
 	assert_true(world.summary_panel.has_signal("restart_same_seed_requested"), "RunSummaryPanel defines signal restart_same_seed_requested")
-	assert_true(world.summary_panel.has_signal("restart_custom_seed_requested"), "RunSummaryPanel defines signal restart_custom_seed_requested")
 
-	if not world.has_method("restart_run_with_seed_text"):
-		world.queue_free()
-		await scene_tree.process_frame
-		return
-
-	world.call("restart_run_with_seed_text", "RING_AND_MODAL_88")
+	world.set_start_screen_seed_text("RING_AND_SUMMARY_88")
+	world.select_starter_ball(0)
 	await scene_tree.physics_frame
 
 	# 1. Bonus ring signal adds +0.8s to RunState countdown
@@ -447,97 +486,7 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	world.track_generator.bonus_ring_collected.emit(0.8)
 	assert_approx(world.run_state.time_remaining, 20.8, 0.01, "bonus_ring_collected adds +0.8s to RunState.time_remaining")
 
-	# 2. Opening HUD seed modal pauses countdown and freezes ball + track entities; cancelling resumes cleanly
-	if world.hud_overlay.has_method("open_seed_dialog") and world.hud_overlay.has_method("close_seed_dialog"):
-		var pause_slime = TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, -45.0), 2.8)
-		var pause_blocker = TrackEntityFactory.create_aerial_blocker(Vector3(0.0, 3.2, -45.0), "soft_balloon", 0.35)
-		var pause_wind = TrackEntityFactory.create_wind_zone(
-			Vector3(0.0, 1.8, -32.0),
-			Vector3(6.0, 3.6, 8.0),
-			"cross_right",
-			30.0
-		)
-		var pause_wind_crate = TrackEntityFactory.create_crate(Vector3(0.0, 0.50, -32.0), "light")
-		world.track_generator._spawn_entity(pause_slime)
-		world.track_generator._spawn_entity(pause_blocker)
-		world.track_generator._spawn_entity(pause_wind)
-		world.track_generator._spawn_entity(pause_wind_crate)
-		await scene_tree.physics_frame
-
-		var pre_vel: Vector3 = Vector3(0.0, -1.5, -14.0)
-		world.player_ball.linear_velocity = pre_vel
-		var paused_time: float = world.run_state.time_remaining
-		var slime_pos_paused: Vector3 = pause_slime.position
-		var blocker_pos_paused: Vector3 = pause_blocker.position
-		var wind_phase_paused: float = pause_wind._visual_phase
-		var wind_crate_pos_paused: Vector3 = pause_wind_crate.position
-
-		world.hud_overlay.call("open_seed_dialog")
-		assert_eq(world.game_state, "SEED_INPUT", "Opening seed modal switches game_state to SEED_INPUT")
-		assert_true(world.player_ball.freeze, "Opening seed modal freezes PlayerBall3D")
-
-		for _f in range(10):
-			await scene_tree.physics_frame
-		assert_approx(world.run_state.time_remaining, paused_time, 0.001, "Countdown timer stays paused while SEED_INPUT modal is open")
-		assert_approx(
-			pause_slime.position.distance_to(slime_pos_paused),
-			0.0,
-			0.0001,
-			"BouncerSlime position remains completely frozen while SEED_INPUT is open"
-		)
-		assert_approx(
-			pause_blocker.position.distance_to(blocker_pos_paused),
-			0.0,
-			0.0001,
-			"AerialBlocker position remains completely frozen while SEED_INPUT is open"
-		)
-		assert_approx(
-			pause_wind._visual_phase,
-			wind_phase_paused,
-			0.0001,
-			"WindZone _visual_phase remains completely frozen while SEED_INPUT is open"
-		)
-		assert_approx(
-			pause_wind_crate.position.distance_to(wind_crate_pos_paused),
-			0.0,
-			0.0001,
-			"500g crate inside WindZone remains completely frozen while SEED_INPUT is open"
-		)
-
-		world.hud_overlay.call("close_seed_dialog")
-		assert_eq(world.game_state, "RACING", "Cancelling seed modal resumes RACING state")
-		assert_false(world.player_ball.freeze, "Cancelling seed modal unfreezes PlayerBall3D")
-		assert_lt(world.player_ball.linear_velocity.z, -10.0, "Cancelling seed modal preserves PlayerBall3D forward velocity")
-
-		for _f in range(10):
-			await scene_tree.physics_frame
-		assert_gt(
-			pause_slime.position.distance_to(slime_pos_paused),
-			0.05,
-			"BouncerSlime resumes patrolling cleanly on SEED_INPUT cancel"
-		)
-		assert_gt(
-			pause_blocker.position.distance_to(blocker_pos_paused),
-			0.01,
-			"AerialBlocker resumes bobbing/swaying cleanly on SEED_INPUT cancel"
-		)
-		assert_true(
-			absf(pause_wind._visual_phase - wind_phase_paused) > 0.01,
-			"WindZone _visual_phase resumes scrolling cleanly on SEED_INPUT cancel"
-		)
-		assert_gt(
-			pause_wind_crate.position.distance_to(wind_crate_pos_paused),
-			0.02,
-			"500g crate inside WindZone resumes blowing cleanly on SEED_INPUT cancel"
-		)
-
-		# Submitting a new seed via HUD modal restarts run on Level 1 with that seed
-		world.hud_overlay.call("open_seed_dialog")
-		world.hud_overlay.emit_signal("seed_submitted", "WORKSHOP_777")
-		assert_eq(world.game_state, "RACING", "Submitting seed from HUD modal restarts in RACING state")
-		assert_eq(world.run_state.seed_text, "WORKSHOP_777", "HUD seed submission sets RunState.seed_text to WORKSHOP_777")
-
-	# 3. Debris-triggered barrel blast boosts nearby ball without double-boosting ball-triggered blasts
+	# 2. Debris-triggered barrel blast boosts nearby ball without double-boosting ball-triggered blasts
 	var barrel_ball = TrackEntityFactory.create_explosive_barrel(Vector3(0.0, 0.65, -20.0))
 	world.track_generator._spawn_entity(barrel_ball)
 	world.player_ball.global_position = world.track_generator.track_local_to_world(Vector3(0.0, 0.7, -21.0))
@@ -566,17 +515,20 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	world._on_barrel_detonated(near_origin, 6.5, 25.0, 0)
 	assert_gt(world.chase_camera._shake_trauma, 0.25, "Nearby barrel detonation (10.5m) adds distance-attenuated camera shake")
 
-	# 4. RunSummaryPanel same-seed and custom-seed signals
+	# 3. RunSummaryPanel returns to START_SCREEN (both same-seed and fresh random seed)
 	world.simulate_race_step(35.0)
 	assert_eq(world.game_state, "GAME_OVER", "Timeout enters GAME_OVER")
 	world.summary_panel.emit_signal("restart_same_seed_requested")
-	assert_eq(world.game_state, "RACING", "restart_same_seed_requested restarts run in RACING")
-	assert_eq(world.run_state.seed_text, "WORKSHOP_777", "restart_same_seed_requested preserves previous seed_text")
+	assert_eq(world.game_state, "START_SCREEN", "restart_same_seed_requested returns to START_SCREEN")
+	assert_eq(world.run_state.seed_text, "RING_AND_SUMMARY_88", "restart_same_seed_requested preserves previous seed_text on START_SCREEN")
+	assert_true(world.start_screen_panel.visible, "StartScreenPanel becomes visible for ball re-selection")
 
+	world.select_starter_ball(0)
 	world.simulate_race_step(35.0)
-	world.summary_panel.emit_signal("restart_custom_seed_requested", "CUSTOM_SEED_999")
-	assert_eq(world.game_state, "RACING", "restart_custom_seed_requested restarts run in RACING")
-	assert_eq(world.run_state.seed_text, "CUSTOM_SEED_999", "restart_custom_seed_requested applies CUSTOM_SEED_999")
+	assert_eq(world.game_state, "GAME_OVER", "Second timeout enters GAME_OVER")
+	world.summary_panel.emit_signal("restart_requested")
+	assert_eq(world.game_state, "START_SCREEN", "restart_requested returns to START_SCREEN with fresh random seed")
+	assert_true(world.run_state.seed_text != "RING_AND_SUMMARY_88", "Fresh restart rolls a new random seed")
 
 	world.queue_free()
 	await scene_tree.process_frame

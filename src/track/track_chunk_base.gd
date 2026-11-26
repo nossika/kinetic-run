@@ -114,7 +114,7 @@ func _add_guard_rail(
 	var mesh_inst := MeshInstance3D.new()
 	var bevel := minf(size.x, size.y) * 0.45
 	var rbox := ClayMeshBuilder.make_rounded_box(size, bevel, 3)
-	var rail_mat := MaterialLibrary.make_silicone_soft_material(color)
+	var rail_mat := MaterialLibrary.make_silicone_soft_material(color, false)
 	ClayMeshBuilder.assign_mesh(mesh_inst, rbox, rail_mat)
 	rail.add_child(mesh_inst)
 
@@ -282,18 +282,9 @@ func add_sky_platform(
 	return deck
 
 
-func _add_speed_stripes(z_len: float, half_w: float) -> void:
-	if DisplayServer.get_name() == "headless":
-		return
-	var stripe_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.96, 0.89), false)
-	var stripe_mesh := ClayMeshBuilder.make_rounded_box(Vector3(half_w * 1.18, 0.018, 0.24), 0.008, 2)
-	var count := int(z_len / 7.5)
-	for i in range(count):
-		var m := MeshInstance3D.new()
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		ClayMeshBuilder.assign_mesh(m, stripe_mesh, stripe_mat)
-		m.position = Vector3(0.0, 0.009, -float(i) * 7.5 - 3.6)
-		add_child(m)
+func _add_speed_stripes(_z_len: float, _half_w: float) -> void:
+	# Kept intentionally clean: cross-track floor lines were visually noisy beneath the rolling ball.
+	return
 
 
 func _build_straight_wide() -> void:

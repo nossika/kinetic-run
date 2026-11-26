@@ -292,28 +292,8 @@ func _rebuild_visual_mesh_for_shape() -> void:
 
 
 func _build_hud_ring_visuals() -> void:
-	_weight_label_3d = Label3D.new()
-	_weight_label_3d.name = "BallWeightLabel"
-	var font := load(MaterialLibrary.BUNDLED_FONT_PATH) as Font
-	if font != null:
-		_weight_label_3d.font = font
-	_weight_label_3d.text = "%0.1fkg" % mass
-	_weight_label_3d.font_size = 44
-	_weight_label_3d.outline_size = 3
-	_weight_label_3d.pixel_size = 0.0036
-	_weight_label_3d.modulate = Color(0.99, 0.96, 0.89, 0.88)
-	_weight_label_3d.outline_modulate = Color(0.32, 0.23, 0.16, 0.45)
-	_weight_label_3d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_weight_label_3d.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_weight_label_3d.double_sided = false
-	_weight_label_3d.shaded = false
-	_weight_label_3d.render_priority = 4
-	_weight_label_3d.position = Vector3(0.0, 0.82, 0.14)
-	_weight_label_3d.rotation_degrees = Vector3(-27.0, 0.0, 0.0)
-	_hud_ring_root.add_child(_weight_label_3d)
-
-	var mint_mat := MaterialLibrary.make_silicone_soft_material(Color(0.46, 0.86, 0.72))
-	var gold_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.82, 0.42))
+	var mint_mat := MaterialLibrary.make_silicone_soft_material(Color(0.24, 0.82, 0.58))
+	var gold_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.78, 0.28))
 	var puff_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.97, 0.93))
 
 	_populate_thrust_side_visuals(_left_arrow_group, -1.0, mint_mat, gold_mat, puff_mat)

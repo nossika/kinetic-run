@@ -1,7 +1,7 @@
 class_name GameWorld3D
 extends Node3D
 
-var game_state: String = "RACING"
+var game_state: String = "START_SCREEN"
 var run_state: RunState = RunState.new()
 var synergy_bus: PhysicsSynergyBus = PhysicsSynergyBus.new()
 var upgrade_catalog: UpgradeCatalog = UpgradeCatalog.new()
@@ -10,10 +10,13 @@ var thrust_controller: LateralThrustController = LateralThrustController.new()
 var track_generator: TrackGenerator3D = null
 var player_ball: PlayerBall3D = null
 var chase_camera: ChaseCamera3D = null
+var start_screen_panel: StartScreenPanel = null
 var hud_overlay: HudOverlay = null
 var draft_panel: UpgradeDraftPanel = null
 var summary_panel: RunSummaryPanel = null
 
+var current_starter_balls: Array[StarterBallDefinition] = []
+var selected_starter_ball: StarterBallDefinition = null
 var current_draft_choices: Array[UpgradeDefinition] = []
 var override_tilt_input: Variant = null
 
@@ -24,7 +27,12 @@ func _ready() -> void:
 	_setup_lighting_and_sky()
 	_setup_world_nodes()
 	_setup_ui_layer()
-	restart_run(0)
+	open_start_screen("")
+
+
+func _exit_tree() -> void:
+	if get_world_3d() != null:
+		PhysicsServer3D.space_set_active(get_world_3d().space, true)
 
 
 func _setup_lighting_and_sky() -> void:
@@ -36,40 +44,37 @@ func _setup_lighting_and_sky() -> void:
 		if sky_tex != null:
 			var pano_mat := PanoramaSkyMaterial.new()
 			pano_mat.panorama = sky_tex
-			pano_mat.energy_multiplier = 0.94
+			pano_mat.energy_multiplier = 0.80
 			sky.sky_material = pano_mat
 		else:
 			var sky_mat := ProceduralSkyMaterial.new()
-			sky_mat.sky_top_color = Color(0.28, 0.64, 0.92)
-			sky_mat.sky_horizon_color = Color(0.68, 0.87, 0.98)
-			sky_mat.ground_horizon_color = Color(0.68, 0.87, 0.98)
-			sky_mat.ground_bottom_color = Color(0.46, 0.74, 0.94)
+			sky_mat.sky_top_color = Color(0.20, 0.56, 0.88)
+			sky_mat.sky_horizon_color = Color(0.54, 0.80, 0.96)
+			sky_mat.ground_horizon_color = Color(0.54, 0.80, 0.96)
+			sky_mat.ground_bottom_color = Color(0.36, 0.66, 0.90)
 			sky.sky_material = sky_mat
 		env.background_mode = Environment.BG_SKY
 		env.sky = sky
-		env.sky_rotation = Vector3(deg_to_rad(8.0), 0.0, 0.0)
+		env.sky_rotation = Vector3(deg_to_rad(-12.0), 0.0, 0.0)
 	else:
 		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.62, 0.84, 0.96)
+		env.background_color = Color(0.46, 0.76, 0.94)
 
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.90
+	env.tonemap_exposure = 0.80
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 0.42
-	env.ambient_light_color = Color(0.92, 0.95, 1.0)
-	env.ambient_light_energy = 0.36
+	env.ambient_light_sky_contribution = 0.24
+	env.ambient_light_color = Color(0.84, 0.90, 0.98)
+	env.ambient_light_energy = 0.18
 
-	# Subtle cool sky-blue horizon mist so warm wooden tracks and vivid toys pop cleanly
+	# Crisp storybook distance: virtually zero white haze so silhouettes stay razor-clear
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.74, 0.88, 0.98)
-	env.fog_light_energy = 0.95
-	env.fog_density = 0.0008
-	env.fog_sky_affect = 0.04
+	env.fog_light_color = Color(0.46, 0.76, 0.96)
+	env.fog_light_energy = 0.72
+	env.fog_density = 0.00018
+	env.fog_sky_affect = 0.0
 
-	env.glow_enabled = true
-	env.glow_hdr_threshold = 1.45
-	env.glow_intensity = 0.10
-	env.glow_bloom = 0.02
+	env.glow_enabled = false
 
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
@@ -78,19 +83,20 @@ func _setup_lighting_and_sky() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.name = "MainSunLight"
-	sun.rotation_degrees = Vector3(-52.0, -28.0, 0.0)
-	sun.light_color = Color(1.0, 0.96, 0.90)
-	sun.light_energy = 0.84
-	sun.shadow_opacity = 0.78
-	sun.directional_shadow_max_distance = 90.0
+	sun.rotation_degrees = Vector3(-54.0, -32.0, 0.0)
+	sun.light_color = Color(1.0, 0.96, 0.89)
+	sun.light_energy = 0.86
+	sun.shadow_opacity = 0.90
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 62.0
 	sun.shadow_enabled = not is_headless
 	add_child(sun)
 
 	var fill := DirectionalLight3D.new()
 	fill.name = "SkyFillLight"
 	fill.rotation_degrees = Vector3(-34.0, 148.0, 0.0)
-	fill.light_color = Color(0.82, 0.90, 1.0)
-	fill.light_energy = 0.18
+	fill.light_color = Color(0.80, 0.88, 1.0)
+	fill.light_energy = 0.12
 	fill.shadow_enabled = false
 	add_child(fill)
 
@@ -122,26 +128,100 @@ func _setup_ui_layer() -> void:
 	add_child(canvas)
 
 	hud_overlay = HudOverlay.new()
-	hud_overlay.seed_dialog_toggled.connect(_on_seed_dialog_toggled)
-	hud_overlay.seed_submitted.connect(restart_run_with_seed_text)
 	canvas.add_child(hud_overlay)
+
+	start_screen_panel = StartScreenPanel.new()
+	start_screen_panel.starter_ball_selected.connect(select_starter_ball)
+	start_screen_panel.seed_changed.connect(set_start_screen_seed_text)
+	start_screen_panel.randomize_seed_requested.connect(randomize_start_screen_seed)
+	canvas.add_child(start_screen_panel)
 
 	draft_panel = UpgradeDraftPanel.new()
 	draft_panel.upgrade_chosen.connect(select_draft_upgrade)
 	canvas.add_child(draft_panel)
 
 	summary_panel = RunSummaryPanel.new()
-	summary_panel.restart_requested.connect(func() -> void: restart_run(0))
-	summary_panel.restart_same_seed_requested.connect(restart_same_seed)
-	summary_panel.restart_custom_seed_requested.connect(restart_run_with_seed_text)
+	summary_panel.restart_requested.connect(func() -> void: open_start_screen(""))
+	summary_panel.restart_same_seed_requested.connect(func() -> void: open_start_screen(run_state.seed_text))
 	canvas.add_child(summary_panel)
+
+
+func open_start_screen(seed_text: String = "") -> void:
+	synergy_bus.reset_all()
+	selected_starter_ball = null
+	player_ball.apply_starter_ball(null)
+	run_state.start_new_run_from_text(seed_text)
+	_refresh_start_screen_state_and_preview()
+
+
+func set_start_screen_seed_text(raw_text: String) -> void:
+	synergy_bus.reset_all()
+	selected_starter_ball = null
+	run_state.start_new_run_from_text(raw_text)
+	_refresh_start_screen_state_and_preview()
+
+
+func randomize_start_screen_seed() -> void:
+	open_start_screen("")
+
+
+func _refresh_start_screen_state_and_preview() -> void:
+	current_starter_balls = StarterBallCatalog.roll_starter_balls(run_state.run_seed, 3)
+	if draft_panel != null:
+		draft_panel.visible = false
+	if summary_panel != null:
+		summary_panel.visible = false
+	if hud_overlay != null:
+		hud_overlay.visible = false
+
+	_set_world_simulation_active(true)
+	run_state.begin_level(1)
+	synergy_bus.reset_level_transient()
+	thrust_controller.reset()
+
+	var level_seed := RunState.derive_track_seed(run_state.run_seed, 1)
+	track_generator.generate_track(1, level_seed)
+	player_ball.track_reference = track_generator.get_track_root()
+	if not current_starter_balls.is_empty():
+		player_ball.apply_starter_ball(current_starter_balls[0])
+	var preview_pos := track_generator.track_local_to_world(Vector3(0.0, player_ball.current_radius + 0.15, -1.5))
+	player_ball.reset_for_track(preview_pos)
+	player_ball.linear_velocity = Vector3.ZERO
+	player_ball.angular_velocity = Vector3.ZERO
+	player_ball.set_paused(true)
+	chase_camera.snap_to_target(preview_pos)
+	thrust_controller.apply_vertical_gravity_to_space(get_world_3d().space)
+	_set_world_simulation_active(false)
+
+	game_state = "START_SCREEN"
+	if start_screen_panel != null:
+		start_screen_panel.show_start_screen(run_state.seed_text, current_starter_balls)
+
+
+func select_starter_ball(ball_index: int) -> void:
+	if game_state != "START_SCREEN":
+		return
+	if ball_index < 0 or ball_index >= current_starter_balls.size():
+		return
+	selected_starter_ball = current_starter_balls[ball_index]
+	synergy_bus.reset_all()
+	player_ball.apply_starter_ball(selected_starter_ball)
+	if start_screen_panel != null:
+		start_screen_panel.visible = false
+	if hud_overlay != null:
+		hud_overlay.visible = true
+	_start_level(1)
 
 
 func restart_run(seed_val: int = 0) -> void:
 	synergy_bus.reset_all()
+	selected_starter_ball = null
+	player_ball.apply_starter_ball(null)
 	run_state.start_new_run(seed_val)
+	if start_screen_panel != null:
+		start_screen_panel.visible = false
 	if hud_overlay != null:
-		hud_overlay.close_seed_dialog(false)
+		hud_overlay.visible = true
 	if draft_panel != null:
 		draft_panel.visible = false
 	if summary_panel != null:
@@ -151,9 +231,13 @@ func restart_run(seed_val: int = 0) -> void:
 
 func restart_run_with_seed_text(raw_text: String) -> void:
 	synergy_bus.reset_all()
+	selected_starter_ball = null
+	player_ball.apply_starter_ball(null)
 	run_state.start_new_run_from_text(raw_text)
+	if start_screen_panel != null:
+		start_screen_panel.visible = false
 	if hud_overlay != null:
-		hud_overlay.close_seed_dialog(false)
+		hud_overlay.visible = true
 	if draft_panel != null:
 		draft_panel.visible = false
 	if summary_panel != null:
@@ -162,7 +246,7 @@ func restart_run_with_seed_text(raw_text: String) -> void:
 
 
 func restart_same_seed() -> void:
-	restart_run_with_seed_text(run_state.seed_text)
+	open_start_screen(run_state.seed_text)
 
 
 func _set_world_simulation_active(active: bool) -> void:
@@ -191,7 +275,7 @@ func _start_level(level: int) -> void:
 
 	game_state = "RACING"
 	if hud_overlay != null:
-		hud_overlay.seed_input_enabled = true
+		hud_overlay.visible = true
 	_refresh_hud()
 
 
@@ -265,30 +349,9 @@ func _read_tilt_input() -> float:
 	return axis
 
 
-func _on_seed_dialog_toggled(is_open: bool) -> void:
-	if is_open:
-		if game_state != "RACING":
-			return
-		thrust_controller.reset()
-		player_ball.set_paused(true)
-		_set_world_simulation_active(false)
-		game_state = "SEED_INPUT"
-		_refresh_hud()
-	else:
-		if game_state != "SEED_INPUT":
-			return
-		game_state = "RACING"
-		_set_world_simulation_active(true)
-		player_ball.set_paused(false)
-		_refresh_hud()
-
-
 func on_finish_line_crossed() -> void:
 	if game_state != "RACING":
 		return
-	if hud_overlay != null:
-		hud_overlay.close_seed_dialog(false)
-		hud_overlay.seed_input_enabled = false
 	_set_world_simulation_active(true)
 	game_state = "DRAFTING"
 	thrust_controller.reset()
@@ -319,9 +382,6 @@ func select_draft_upgrade(choice_index: int) -> void:
 
 
 func _enter_game_over() -> void:
-	if hud_overlay != null:
-		hud_overlay.close_seed_dialog(false)
-		hud_overlay.seed_input_enabled = false
 	_set_world_simulation_active(true)
 	game_state = "GAME_OVER"
 	thrust_controller.reset()
@@ -460,10 +520,13 @@ func _refresh_hud() -> void:
 
 
 func _format_build_summary() -> String:
+	var ball_prefix := "初始彩绘球"
+	if selected_starter_ball != null:
+		ball_prefix = "%s（%s）" % [selected_starter_ball.display_name, selected_starter_ball.shape_label]
 	var active := synergy_bus.get_active_upgrades()
 	if active.is_empty():
-		return "当前构筑：初始陶瓷球（冲过终点三选一强化）"
-	var parts: Array[String] = []
+		return "当前构筑：%s  ·  冲过终点三选一强化" % ball_prefix
+	var parts: Array[String] = [ball_prefix]
 	for def in active:
 		var cnt := synergy_bus.get_upgrade_count(def.id)
 		if cnt > 1:

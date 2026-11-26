@@ -1,11 +1,6 @@
 class_name HudOverlay
 extends Control
 
-signal seed_submitted(seed_text: String)
-signal seed_dialog_toggled(is_open: bool)
-
-var seed_input_enabled: bool = true
-
 var _timer_label: Label = null
 var _level_label: Label = null
 var _speed_label: Label = null
@@ -18,15 +13,10 @@ var _controls_hint: Label = null
 var _upgrades_label: Label = null
 
 var _seed_label: Label = null
-var _seed_btn: Button = null
 var _left_thrust_badge: PanelContainer = null
 var _left_thrust_label: Label = null
 var _right_thrust_badge: PanelContainer = null
 var _right_thrust_label: Label = null
-
-var _seed_modal: Control = null
-var _seed_line_edit: LineEdit = null
-var _current_seed_text: String = ""
 
 var _thrust_active_style: StyleBoxFlat = null
 var _thrust_idle_style: StyleBoxFlat = null
@@ -38,14 +28,13 @@ func _ready() -> void:
 	theme = UiTheme.build_theme()
 	_init_badge_styles()
 	_build_layout()
-	_build_seed_modal()
 	update_thrust_indicators(0.0)
 
 
 func _init_badge_styles() -> void:
 	_thrust_active_style = UiTheme.make_storybook_card_style(
-		Color(0.46, 0.82, 0.68, 0.96),
-		Color(0.28, 0.64, 0.50, 0.96),
+		Color(0.24, 0.76, 0.56, 0.96),
+		Color(0.16, 0.56, 0.40, 0.96),
 		12,
 		2
 	)
@@ -82,7 +71,7 @@ func _build_layout() -> void:
 	root_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(root_vbox)
 
-	# 1. Top row: centered warm parchment Timer/Progress Card + Seed Pill
+	# 1. Top row: centered warm parchment Timer/Progress Card + Read-only Seed Pill
 	var top_row := HBoxContainer.new()
 	top_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	top_row.add_theme_constant_override("separation", 12)
@@ -128,7 +117,6 @@ func _build_layout() -> void:
 	_left_thrust_badge.add_child(_left_thrust_label)
 
 	_timer_label = Label.new()
-	_timer_label.custom_minimum_size = Vector2(146.0, 0.0)
 	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_timer_label.add_theme_font_size_override("font_size", 32)
 	_timer_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
@@ -157,7 +145,7 @@ func _build_layout() -> void:
 
 	var seed_pill := PanelContainer.new()
 	seed_pill.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	seed_pill.mouse_filter = Control.MOUSE_FILTER_PASS
+	seed_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	seed_pill.add_theme_stylebox_override(
 		"panel",
 		UiTheme.make_storybook_card_style(
@@ -169,24 +157,11 @@ func _build_layout() -> void:
 	)
 	top_row.add_child(seed_pill)
 
-	var seed_hbox := HBoxContainer.new()
-	seed_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	seed_hbox.add_theme_constant_override("separation", 10)
-	seed_pill.add_child(seed_hbox)
-
 	_seed_label = Label.new()
 	_seed_label.add_theme_font_size_override("font_size", 14)
 	_seed_label.add_theme_color_override("font_color", Color(0.46, 0.33, 0.18))
 	_seed_label.text = "种子: ------"
-	seed_hbox.add_child(_seed_label)
-
-	_seed_btn = Button.new()
-	_seed_btn.text = "换种子 [N]"
-	_seed_btn.focus_mode = Control.FOCUS_NONE
-	_seed_btn.custom_minimum_size = Vector2(102.0, 30.0)
-	_seed_btn.add_theme_font_size_override("font_size", 14)
-	_seed_btn.pressed.connect(open_seed_dialog)
-	seed_hbox.add_child(_seed_btn)
+	seed_pill.add_child(_seed_label)
 
 	# 2. Middle expanding area (holds soft rounded Respawn pill when active)
 	var mid_spacer := CenterContainer.new()
@@ -245,7 +220,7 @@ func _build_layout() -> void:
 	_upgrades_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_upgrades_label.add_theme_font_size_override("font_size", 14)
 	_upgrades_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
-	_upgrades_label.text = "当前构筑：初始陶瓷球（冲过终点三选一强化）"
+	_upgrades_label.text = "当前构筑：初始玩具球（冲过终点三选一强化）"
 	b_vbox.add_child(_upgrades_label)
 
 	var h_spacer := Control.new()
@@ -293,141 +268,6 @@ func _build_layout() -> void:
 	_overload_label.add_theme_color_override("font_color", UiTheme.AMBER_ACCENT)
 	_overload_label.text = "冲量乘区: x1.00"
 	sp_vbox.add_child(_overload_label)
-
-
-func _build_seed_modal() -> void:
-	_seed_modal = Control.new()
-	_seed_modal.name = "SeedModal"
-	_seed_modal.visible = false
-	_seed_modal.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(_seed_modal)
-	_seed_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.20, 0.14, 0.10, 0.46)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	_seed_modal.add_child(backdrop)
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
-	var center := CenterContainer.new()
-	center.mouse_filter = Control.MOUSE_FILTER_PASS
-	_seed_modal.add_child(center)
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(460.0, 220.0)
-	card.add_theme_stylebox_override(
-		"panel",
-		UiTheme.make_storybook_card_style(
-			UiTheme.CREAM_ELEVATED,
-			Color(0.82, 0.65, 0.42, 0.95),
-			22,
-			3
-		)
-	)
-	center.add_child(card)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 12)
-	card.add_child(vb)
-
-	var title := Label.new()
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 23)
-	title.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
-	title.text = "填入挑战种子（比赛已暂停）"
-	vb.add_child(title)
-
-	var desc := Label.new()
-	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc.add_theme_font_size_override("font_size", 14)
-	desc.add_theme_color_override("font_color", UiTheme.INK_MUTED)
-	desc.text = "输入数字、英文或中文口令从第 1 关开跑（留空则生成新随机种子）"
-	vb.add_child(desc)
-
-	_seed_line_edit = LineEdit.new()
-	_seed_line_edit.placeholder_text = "例如：STORYBOOK / 888888 / 给我滚"
-	_seed_line_edit.custom_minimum_size = Vector2(0.0, 42.0)
-	_seed_line_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_seed_line_edit.text_submitted.connect(_on_seed_text_submitted)
-	vb.add_child(_seed_line_edit)
-
-	var btn_row := HBoxContainer.new()
-	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	btn_row.add_theme_constant_override("separation", 14)
-	vb.add_child(btn_row)
-
-	var confirm_btn := Button.new()
-	confirm_btn.text = "按此种子开局（回车）"
-	confirm_btn.custom_minimum_size = Vector2(185.0, 40.0)
-	confirm_btn.pressed.connect(_confirm_seed_dialog)
-	btn_row.add_child(confirm_btn)
-
-	var cancel_btn := Button.new()
-	cancel_btn.text = "取消继续（Esc）"
-	cancel_btn.custom_minimum_size = Vector2(150.0, 40.0)
-	cancel_btn.pressed.connect(func() -> void: close_seed_dialog(true))
-	btn_row.add_child(cancel_btn)
-
-
-func is_seed_dialog_open() -> bool:
-	return _seed_modal != null and _seed_modal.visible
-
-
-func open_seed_dialog() -> void:
-	if not seed_input_enabled or _seed_modal == null or _seed_modal.visible:
-		return
-	_seed_modal.visible = true
-	if _seed_line_edit != null:
-		_seed_line_edit.text = _current_seed_text
-		_seed_line_edit.grab_focus()
-		_seed_line_edit.select_all()
-	seed_dialog_toggled.emit(true)
-
-
-func close_seed_dialog(emit_toggle: bool = true) -> void:
-	if _seed_modal == null or not _seed_modal.visible:
-		return
-	_seed_modal.visible = false
-	if _seed_line_edit != null and _seed_line_edit.has_focus():
-		_seed_line_edit.release_focus()
-	if emit_toggle:
-		seed_dialog_toggled.emit(false)
-
-
-func _confirm_seed_dialog() -> void:
-	var raw_txt := _seed_line_edit.text if _seed_line_edit != null else ""
-	close_seed_dialog(false)
-	seed_submitted.emit(raw_txt)
-
-
-func _on_seed_text_submitted(submitted_text: String) -> void:
-	close_seed_dialog(false)
-	seed_submitted.emit(submitted_text)
-
-
-func _input(event: InputEvent) -> void:
-	if not is_seed_dialog_open():
-		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var k := (event as InputEventKey).keycode
-		if k == KEY_ESCAPE:
-			close_seed_dialog(true)
-			accept_event()
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not visible or not seed_input_enabled or is_seed_dialog_open():
-		return
-	var focused := get_viewport().gui_get_focus_owner() if get_viewport() != null else null
-	if focused is LineEdit:
-		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var k := (event as InputEventKey).keycode
-		var pk := (event as InputEventKey).physical_keycode
-		if k == KEY_N or pk == KEY_N:
-			open_seed_dialog()
-			accept_event()
 
 
 func update_thrust_indicators(thrust_axis: float) -> void:
@@ -480,13 +320,8 @@ func update_hud(
 	else:
 		_timer_label.add_theme_color_override("font_color", UiTheme.INK_PRIMARY)
 
-	if seed_text != "":
-		_current_seed_text = seed_text
-		if _seed_label != null:
-			_seed_label.text = "种子: %s" % seed_text
-
-	if _seed_btn != null:
-		_seed_btn.disabled = not seed_input_enabled
+	if seed_text != "" and _seed_label != null:
+		_seed_label.text = "种子: %s" % seed_text
 
 	update_thrust_indicators(0.0 if respawning else thrust_axis)
 

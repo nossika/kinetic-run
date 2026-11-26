@@ -14,7 +14,7 @@ func _ready() -> void:
 
 	var pad_mesh := MeshInstance3D.new()
 	var pebble := ClayMeshBuilder.make_pebble_pad(Vector2(2.3, 3.5), 0.10, 24)
-	var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.18, 0.80, 0.46))
+	var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.14, 0.78, 0.42), false)
 	ClayMeshBuilder.assign_mesh(pad_mesh, pebble, pad_mat)
 	add_child(pad_mesh)
 
