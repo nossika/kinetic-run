@@ -232,13 +232,33 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 	var found_spring := false
 	var found_ring := false
 	var found_blocker := false
+	var found_balloon_blocker := false
+	var found_iron_blocker := false
 	var found_light_crate := false
 	var found_medium_crate := false
+	var found_wooden_pin := false
+	var found_slime := false
+	var found_barrel := false
+	var found_brute := false
+	var all_medium_crates_angled := true
+	var min_medium_crate_yaw := 999.0
+	var narrow_bridge_medium_crates := 0
+	var narrow_bridge_light_or_pin := 0
+	var pin_chunks_seen: Dictionary = {}
 	var sample_ring: AerialBonusRing = null
 
-	for s in range(1, 10):
-		var info: Dictionary = gen.generate_track(2, 9000 + s * 37)
+	for s in range(1, 16):
+		var lvl := 2 if s <= 5 else 3
+		var info: Dictionary = gen.generate_track(lvl, 9000 + s * 37)
+		var chunks: Array = info["chunks"]
 		for ent in info["entities"]:
+			var node_ent := ent as Node3D
+			var owner_chunk_type := ""
+			for ch in chunks:
+				if node_ent.position.z <= ch.entry_z and node_ent.position.z >= ch.exit_z:
+					owner_chunk_type = String(ch.chunk_type)
+					break
+
 			if ent is SpringPad:
 				found_spring = true
 			elif ent is AerialBonusRing:
@@ -247,18 +267,71 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 					sample_ring = ent as AerialBonusRing
 			elif ent is AerialBlocker:
 				found_blocker = true
+				assert_true(ent is RigidBody3D, "AerialBlocker is a native RigidBody3D")
+				var ab := ent as AerialBlocker
+				if ab.blocker_type == "mag_iron" and ab.weight_label == "12kg":
+					found_iron_blocker = true
+				elif ab.blocker_type == "soft_balloon" and ab.weight_label == "250g":
+					found_balloon_blocker = true
 			elif ent is CrateObstacle:
 				var c := ent as CrateObstacle
 				if c.weight_tier == "medium":
 					found_medium_crate = true
+					assert_eq(c.weight_label, "2kg", "Medium crate weight_label is 2kg")
+					var abs_yaw := absf(c.rotation_degrees.y)
+					min_medium_crate_yaw = minf(min_medium_crate_yaw, abs_yaw)
+					if abs_yaw < 15.0:
+						all_medium_crates_angled = false
+					if owner_chunk_type == "NarrowBridge":
+						narrow_bridge_medium_crates += 1
 				else:
 					found_light_crate = true
+					assert_eq(c.weight_label, "500g", "Light crate weight_label is 500g")
+					if owner_chunk_type == "NarrowBridge":
+						narrow_bridge_light_or_pin += 1
+			elif ent is WoodenPin:
+				found_wooden_pin = true
+				var wp := ent as WoodenPin
+				assert_eq(wp.weight_label, "800g", "WoodenPin weight_label is 800g")
+				if owner_chunk_type != "":
+					pin_chunks_seen[owner_chunk_type] = true
+				if owner_chunk_type == "NarrowBridge":
+					narrow_bridge_light_or_pin += 1
+			elif ent is BouncerSlime:
+				found_slime = true
+				assert_true(ent is RigidBody3D, "BouncerSlime is a native RigidBody3D")
+				assert_eq((ent as BouncerSlime).weight_label, "3kg", "BouncerSlime weight_label is 3kg")
+			elif ent is ExplosiveBarrel:
+				found_barrel = true
+				assert_true(ent is RigidBody3D, "ExplosiveBarrel is a native RigidBody3D")
+				assert_eq((ent as ExplosiveBarrel).weight_label, "1.5kg", "ExplosiveBarrel weight_label is 1.5kg")
+			elif ent is ShieldBrute:
+				found_brute = true
+				assert_true(ent is RigidBody3D, "ShieldBrute is a native RigidBody3D")
+				assert_eq((ent as ShieldBrute).weight_label, "20kg", "ShieldBrute weight_label is 20kg")
 
 	assert_true(found_spring, "Generated tracks spawn SpringPad entities")
 	assert_true(found_ring, "Generated tracks spawn AerialBonusRing entities")
 	assert_true(found_blocker, "Generated tracks spawn AerialBlocker entities")
+	assert_true(found_balloon_blocker, "Generated tracks spawn 250g soft_balloon AerialBlockers")
+	assert_true(found_iron_blocker, "Generated Level 3+ tracks spawn 12kg mag_iron AerialBlockers")
 	assert_true(found_light_crate, "Generated tracks spawn 500g light crates")
-	assert_true(found_medium_crate, "Generated Level 2+ tracks deterministically mix 2.5kg medium crates")
+	assert_true(found_medium_crate, "Generated Level 2+ tracks deterministically mix 2kg medium crates")
+	assert_true(
+		all_medium_crates_angled and min_medium_crate_yaw >= 15.0,
+		"Every 2kg medium crate spawns with angled yaw abs(rotation_degrees.y) >= 15.0 (min=%0.2f°)" % min_medium_crate_yaw
+	)
+	assert_true(found_wooden_pin, "Generated tracks spawn 800g WoodenPin entities")
+	assert_true(found_slime, "Generated tracks spawn 3kg BouncerSlime RigidBody3D entities")
+	assert_true(found_barrel, "Generated tracks spawn 1.5kg ExplosiveBarrel RigidBody3D entities")
+	assert_true(found_brute, "Generated tracks spawn 20kg ShieldBrute RigidBody3D entities")
+	assert_eq(narrow_bridge_medium_crates, 0, "NarrowBridge chunks contain zero 2kg medium crates")
+	assert_gt(float(narrow_bridge_light_or_pin), 0.0, "NarrowBridge Level 2+ chunks spawn lightweight 500g crates or 800g WoodenPins")
+	for expected_pin_chunk in ["StraightWide", "WaveHills", "SplitPath", "FunnelGauntlet"]:
+		assert_true(
+			pin_chunks_seen.has(expected_pin_chunk),
+			"WoodenPin formations spawn in '%s' chunks" % expected_pin_chunk
+		)
 
 	# Verify bonus_ring_collected signal forwarding on TrackGenerator3D
 	if sample_ring != null and is_instance_valid(sample_ring) and gen.has_signal("bonus_ring_collected"):
@@ -281,10 +354,11 @@ func _capture_track_signature(info: Dictionary) -> Dictionary:
 		var scr: Script = node_ent.get_script()
 		var scr_path: String = scr.resource_path if scr != null else node_ent.get_class()
 		var p: Vector3 = node_ent.position
+		var rot_y: float = node_ent.rotation_degrees.y
 		var extra: String = str(node_ent.get_meta("weight_label", ""))
 		if node_ent is AerialBlocker:
 			extra += "|phase=%0.4f" % (node_ent as AerialBlocker).initial_phase
-		ent_records.append("%s@(%0.3f,%0.3f,%0.3f)[%s]" % [scr_path, p.x, p.y, p.z, extra])
+		ent_records.append("%s@(%0.3f,%0.3f,%0.3f)rotY=%0.3f[%s]" % [scr_path, p.x, p.y, p.z, rot_y, extra])
 
 	return {
 		"chunk_types": chunk_types,
@@ -309,7 +383,7 @@ func _test_deterministic_multi_level_seed_layout() -> void:
 	var seed_main := 20261125
 	var seed_other := 99887766
 
-	for lvl in [1, 2]:
+	for lvl in [1, 2, 3]:
 		var track_seed_1: int = run_script.derive_track_seed(seed_main, lvl)
 		var track_seed_2: int = run_script.derive_track_seed(seed_main, lvl)
 		assert_eq(track_seed_1, track_seed_2, "RunState.derive_track_seed is deterministic for Level %d" % lvl)
@@ -319,7 +393,7 @@ func _test_deterministic_multi_level_seed_layout() -> void:
 
 		assert_eq(sig_a["chunk_types"], sig_b["chunk_types"], "Same seed Level %d produces identical chunk type array" % lvl)
 		assert_eq(sig_a["entity_count"], sig_b["entity_count"], "Same seed Level %d produces identical entity count" % lvl)
-		assert_eq(sig_a["entity_records"], sig_b["entity_records"], "Same seed Level %d produces identical entity classes, tiers, phases, and local positions" % lvl)
+		assert_eq(sig_a["entity_records"], sig_b["entity_records"], "Same seed Level %d produces identical entity classes, tiers, rotations, phases, and local positions" % lvl)
 
 		var diff_seed: int = run_script.derive_track_seed(seed_other, lvl)
 		var sig_diff: Dictionary = _capture_track_signature(gen_b.generate_track(lvl, diff_seed))
@@ -340,7 +414,37 @@ func _test_rigidbody_clearance_and_chunk_z_bounds() -> void:
 	var gen = gen_script.new()
 	root.add_child(gen)
 
-	var min_rb_dist := 999.0
+	assert_true("MIN_PIN_CLEARANCE_XZ" in gen, "TrackGenerator3D defines MIN_PIN_CLEARANCE_XZ")
+	if "MIN_PIN_CLEARANCE_XZ" in gen:
+		assert_approx(float(gen.MIN_PIN_CLEARANCE_XZ), 0.92, 0.001, "MIN_PIN_CLEARANCE_XZ is 0.92m")
+
+	# Direct unit verification of 3D layered + pin-aware clearance helper
+	gen.generate_track(1, 1111)
+	gen.active_entities.clear()
+	var aerial_rb := TrackEntityFactory.create_aerial_blocker(Vector3(0.0, 2.65, -20.0), "soft_balloon", 0.0)
+	gen._spawn_entity(aerial_rb)
+	assert_true(
+		gen._is_rigidbody_pos_clear(Vector3(0.0, 0.50, -20.0), false),
+		"AerialBlocker at Y=2.65m does not displace ground obstacle at Y=0.50m (different vertical layer)"
+	)
+	var pin_a := TrackEntityFactory.create_wooden_pin(Vector3(-0.52, 0.79, -20.0))
+	gen._spawn_entity(pin_a)
+	assert_true(
+		gen._is_rigidbody_pos_clear(Vector3(0.52, 0.79, -20.0), true),
+		"Two co-planar WoodenPins 1.04m apart satisfy MIN_PIN_CLEARANCE_XZ (0.92m)"
+	)
+	assert_false(
+		gen._is_rigidbody_pos_clear(Vector3(0.20, 0.79, -20.0), true),
+		"Two co-planar WoodenPins 0.72m apart violate MIN_PIN_CLEARANCE_XZ (0.92m)"
+	)
+	assert_false(
+		gen._is_rigidbody_pos_clear(Vector3(0.52, 0.50, -20.0), false),
+		"Non-pin ground RigidBody3D 1.04m from a WoodenPin violates MIN_RB_CLEARANCE_XZ (1.90m)"
+	)
+
+	var min_non_pin_rb_dist := 999.0
+	var min_pin_pair_dist := 999.0
+	var pin_pair_count := 0
 	var out_of_bounds_count := 0
 
 	for lvl in [1, 3, 5, 9]:
@@ -370,12 +474,23 @@ func _test_rigidbody_clearance_and_chunk_z_bounds() -> void:
 					if absf(rbs[i].position.y - rbs[j].position.y) >= 1.50:
 						continue
 					var pj := Vector2(rbs[j].position.x, rbs[j].position.z)
-					min_rb_dist = minf(min_rb_dist, pi.distance_to(pj))
+					var d := pi.distance_to(pj)
+					if rbs[i] is WoodenPin and rbs[j] is WoodenPin:
+						min_pin_pair_dist = minf(min_pin_pair_dist, d)
+						if d < 1.85:
+							pin_pair_count += 1
+					else:
+						min_non_pin_rb_dist = minf(min_non_pin_rb_dist, d)
 
 	assert_eq(out_of_bounds_count, 0, "All chunk entities spawn strictly within [finish_z + 1.4, -START_APRON_LEN - 1.4]")
+	assert_gt(float(pin_pair_count), 0.0, "Generated tracks contain tight WoodenPin bowling clusters (< 1.85m pin-to-pin spacing)")
 	assert_true(
-		min_rb_dist >= 1.85,
-		"Every RigidBody3D pair across Levels 1/3/5/9 maintains >= 1.85m (>> 1.65m) XZ clearance (min=%0.3fm)" % min_rb_dist
+		min_pin_pair_dist >= 0.90,
+		"Every co-planar WoodenPin pair maintains >= 0.90m XZ clearance (min=%0.3fm)" % min_pin_pair_dist
+	)
+	assert_true(
+		min_non_pin_rb_dist >= 1.85,
+		"Every co-planar non-pin RigidBody3D pair maintains >= 1.85m XZ clearance (min=%0.3fm)" % min_non_pin_rb_dist
 	)
 
 	root.queue_free()

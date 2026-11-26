@@ -150,10 +150,11 @@ func _capture_world_track_state(world: Variant) -> Dictionary:
 		var scr: Script = node_ent.get_script()
 		var scr_path: String = scr.resource_path if scr != null else node_ent.get_class()
 		var p: Vector3 = node_ent.position
+		var rot_y: float = node_ent.rotation_degrees.y
 		var extra: String = str(node_ent.get_meta("weight_label", ""))
 		if node_ent is AerialBlocker:
 			extra += "|phase=%0.4f" % (node_ent as AerialBlocker).initial_phase
-		entity_records.append("%s@(%0.3f,%0.3f,%0.3f)[%s]" % [scr_path, p.x, p.y, p.z, extra])
+		entity_records.append("%s@(%0.3f,%0.3f,%0.3f)rotY=%0.3f[%s]" % [scr_path, p.x, p.y, p.z, rot_y, extra])
 
 	return {
 		"chunk_types": chunk_types,
@@ -195,8 +196,9 @@ func _test_vertical_gravity_zero_roll_and_slope_stability() -> void:
 	assert_approx(g_mag, 22.0, 0.01, "World space gravity magnitude is 22.0 m/s^2")
 	assert_approx(world.chase_camera.rotation_degrees.z, 0.0, 0.001, "ChaseCamera3D roll is strictly 0.0 at start")
 
-	# Record unhit 500g and 20kg rigidbodies far down the -11° slope (local Z < -45m so ball won't reach them in 30 frames)
+	# Record unhit 500g, 800g WoodenPin, and 20kg rigidbodies far down the -11° slope (local Z < -45m so ball won't reach them in 30 frames)
 	var tracked_500g: Array[Dictionary] = []
+	var tracked_800g: Array[Dictionary] = []
 	var tracked_20kg: Array[Dictionary] = []
 	for ent in world.track_generator.active_entities:
 		var node_ent := ent as Node3D
@@ -205,10 +207,13 @@ func _test_vertical_gravity_zero_roll_and_slope_stability() -> void:
 		var w_lbl := str(node_ent.get_meta("weight_label", ""))
 		if w_lbl == "500g" and node_ent is RigidBody3D:
 			tracked_500g.append({"node": node_ent, "start_pos": node_ent.position})
+		elif w_lbl == "800g" and node_ent is WoodenPin:
+			tracked_800g.append({"node": node_ent, "start_pos": node_ent.position})
 		elif w_lbl == "20kg" and node_ent is RigidBody3D:
 			tracked_20kg.append({"node": node_ent, "start_pos": node_ent.position})
 
 	assert_gt(float(tracked_500g.size()), 0.0, "Found unhit 500g RigidBody3D obstacles on sloped track")
+	assert_gt(float(tracked_800g.size()), 0.0, "Found unhit 800g WoodenPin obstacles on sloped track")
 	assert_gt(float(tracked_20kg.size()), 0.0, "Found unhit 20kg RigidBody3D obstacles on sloped track")
 
 	var ball_start_world: Vector3 = world.player_ball.global_position
@@ -236,6 +241,13 @@ func _test_vertical_gravity_zero_roll_and_slope_stability() -> void:
 		if rb != null and is_instance_valid(rb):
 			max_disp_500g = maxf(max_disp_500g, rb.position.distance_to(item["start_pos"] as Vector3))
 	assert_lt(max_disp_500g, 0.15, "Unhit 500g rigidbodies stay stationary on -11° slope (< 0.15m over 30 frames)")
+
+	var max_disp_800g := 0.0
+	for item in tracked_800g:
+		var rb := item["node"] as Node3D
+		if rb != null and is_instance_valid(rb):
+			max_disp_800g = maxf(max_disp_800g, rb.position.distance_to(item["start_pos"] as Vector3))
+	assert_lt(max_disp_800g, 0.15, "Unhit 800g WoodenPins stay stationary upright on -11° slope (< 0.15m over 30 frames)")
 
 	var max_disp_20kg := 0.0
 	for item in tracked_20kg:
@@ -462,7 +474,7 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	world.track_generator._spawn_entity(barrel_ball)
 	world.player_ball.global_position = world.track_generator.track_local_to_world(Vector3(0.0, 0.7, -21.0))
 	world.player_ball.linear_velocity = -world.track_generator.get_track_root().global_transform.basis.z.normalized() * 10.0
-	barrel_ball._on_sensor_body_entered(world.player_ball)
+	barrel_ball.on_body_contact(world.player_ball)
 	var speed_after_ball_blast: float = world.player_ball.linear_velocity.length()
 	assert_gt(speed_after_ball_blast, 22.0, "Ball-triggered barrel blast boosts player_ball forward")
 	assert_lt(speed_after_ball_blast, 30.0, "Ball-triggered barrel blast boosts player_ball exactly once (no double boost)")
@@ -474,7 +486,7 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	world.player_ball.global_position = world.track_generator.track_local_to_world(Vector3(0.0, 0.7, -31.5))
 	world.player_ball.linear_velocity = -world.track_generator.get_track_root().global_transform.basis.z.normalized() * 10.0
 	fast_debris.linear_velocity = Vector3(0.0, 4.0, -15.0)
-	barrel_debris._on_sensor_body_entered(fast_debris)
+	barrel_debris.on_body_contact(fast_debris)
 	assert_gt(world.player_ball.linear_velocity.length(), 20.0, "Debris-triggered barrel blast boosts nearby player_ball")
 
 	# 4. RunSummaryPanel same-seed and custom-seed signals
