@@ -35,7 +35,7 @@ func _ready() -> void:
 	add_child(col)
 
 	_build_pin_visuals()
-	MaterialLibrary.attach_weight_labels(self, weight_label, Vector3(0.56, 1.56, 0.56), Color(0.24, 0.14, 0.06))
+	MaterialLibrary.attach_weight_labels(self, weight_label, Vector3(0.56, 1.56, 0.56), Color(0.46, 0.32, 0.20))
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 
@@ -43,48 +43,43 @@ func _ready() -> void:
 func _build_pin_visuals() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var wood_mat := MaterialLibrary.make_beechwood_material(Color(1.06, 0.99, 0.90))
-	var stripe_mat := MaterialLibrary.make_pin_stripe_material(Color(0.92, 0.26, 0.18))
+	var wood_mat := MaterialLibrary.make_beechwood_material(Color(1.03, 0.99, 0.93))
+	var stripe_mat := MaterialLibrary.make_pin_stripe_material(Color(0.92, 0.44, 0.38))
 
 	var belly_inst := MeshInstance3D.new()
-	var belly_cyl := CylinderMesh.new()
-	belly_cyl.top_radius = 0.25
-	belly_cyl.bottom_radius = 0.27
-	belly_cyl.height = 0.86
-	belly_cyl.radial_segments = 16
-	belly_cyl.material = wood_mat
-	RenderHelper.attach_mesh(belly_inst, belly_cyl)
-	belly_inst.position = Vector3(0.0, -0.35, 0.0)
+	var belly_mesh := ClayMeshBuilder.make_chamfered_cylinder(0.25, 0.28, 0.88, 0.09, 24)
+	ClayMeshBuilder.assign_mesh(belly_inst, belly_mesh, wood_mat)
+	belly_inst.position = Vector3(0.0, -0.34, 0.0)
 	add_child(belly_inst)
 
 	var neck_inst := MeshInstance3D.new()
 	var neck_cyl := CylinderMesh.new()
-	neck_cyl.top_radius = 0.14
-	neck_cyl.bottom_radius = 0.25
+	neck_cyl.top_radius = 0.15
+	neck_cyl.bottom_radius = 0.245
 	neck_cyl.height = 0.36
-	neck_cyl.radial_segments = 16
+	neck_cyl.radial_segments = 24
 	neck_cyl.material = wood_mat
 	RenderHelper.attach_mesh(neck_inst, neck_cyl)
 	neck_inst.position = Vector3(0.0, 0.26, 0.0)
 	add_child(neck_inst)
 
 	var band_inst := MeshInstance3D.new()
-	var band_cyl := CylinderMesh.new()
-	band_cyl.top_radius = 0.165
-	band_cyl.bottom_radius = 0.185
-	band_cyl.height = 0.085
-	band_cyl.radial_segments = 16
-	band_cyl.material = stripe_mat
-	RenderHelper.attach_mesh(band_inst, band_cyl)
+	var band_torus := TorusMesh.new()
+	band_torus.inner_radius = 0.145
+	band_torus.outer_radius = 0.195
+	band_torus.rings = 24
+	band_torus.ring_segments = 12
+	band_torus.material = stripe_mat
+	RenderHelper.attach_mesh(band_inst, band_torus)
 	band_inst.position = Vector3(0.0, 0.32, 0.0)
 	add_child(band_inst)
 
 	var head_inst := MeshInstance3D.new()
 	var head_sphere := SphereMesh.new()
-	head_sphere.radius = 0.18
-	head_sphere.height = 0.38
-	head_sphere.radial_segments = 16
-	head_sphere.rings = 10
+	head_sphere.radius = 0.195
+	head_sphere.height = 0.40
+	head_sphere.radial_segments = 24
+	head_sphere.rings = 14
 	head_sphere.material = wood_mat
 	RenderHelper.attach_mesh(head_inst, head_sphere)
 	head_inst.position = Vector3(0.0, 0.58, 0.0)

@@ -25,38 +25,34 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		var outer_ring := MeshInstance3D.new()
 		var outer_torus := TorusMesh.new()
-		outer_torus.inner_radius = 0.92
-		outer_torus.outer_radius = 1.16
-		outer_torus.rings = 28
-		outer_torus.ring_segments = 14
-		outer_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.18, 0.94, 1.0, 0.82))
+		outer_torus.inner_radius = 0.90
+		outer_torus.outer_radius = 1.18
+		outer_torus.rings = 32
+		outer_torus.ring_segments = 16
+		outer_torus.material = MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.80, 0.36))
 		RenderHelper.attach_mesh(outer_ring, outer_torus)
 		outer_ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		_visual_root.add_child(outer_ring)
 
 		var inner_ring := MeshInstance3D.new()
 		var inner_torus := TorusMesh.new()
-		inner_torus.inner_radius = 0.83
-		inner_torus.outer_radius = 0.92
-		inner_torus.rings = 28
-		inner_torus.ring_segments = 12
-		inner_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(1.0, 0.82, 0.24, 0.88))
+		inner_torus.inner_radius = 0.81
+		inner_torus.outer_radius = 0.91
+		inner_torus.rings = 32
+		inner_torus.ring_segments = 14
+		inner_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.52, 0.90, 0.76, 0.88))
 		RenderHelper.attach_mesh(inner_ring, inner_torus)
 		inner_ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		_visual_root.add_child(inner_ring)
 
 		if with_ground_stem:
 			var stem_inst := MeshInstance3D.new()
-			var stem_cyl := CylinderMesh.new()
-			stem_cyl.top_radius = 0.055
-			stem_cyl.bottom_radius = 0.075
-			stem_cyl.height = 1.8
-			var brass_mat := StandardMaterial3D.new()
-			brass_mat.albedo_color = Color(0.85, 0.68, 0.28)
-			brass_mat.metallic = 0.78
-			brass_mat.roughness = 0.28
-			stem_cyl.material = brass_mat
-			RenderHelper.attach_mesh(stem_inst, stem_cyl)
+			var stem_cap := CapsuleMesh.new()
+			stem_cap.radius = 0.075
+			stem_cap.height = 1.85
+			stem_cap.radial_segments = 14
+			stem_cap.material = MaterialLibrary.make_beechwood_material(Color(0.96, 0.88, 0.76))
+			RenderHelper.attach_mesh(stem_inst, stem_cap)
 			stem_inst.position = Vector3(0.0, -2.0, 0.0)
 			_visual_root.add_child(stem_inst)
 

@@ -33,63 +33,45 @@ func _ready() -> void:
 	add_child(col)
 
 	_build_weight_visuals()
-	MaterialLibrary.attach_weight_labels(self, "20kg", Vector3(1.45, 1.45, 1.45), Color(0.96, 0.97, 1.0))
+	MaterialLibrary.attach_weight_labels(self, "20kg", Vector3(1.45, 1.45, 1.45), Color(0.96, 0.93, 0.86))
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 
 
 func _build_weight_visuals() -> void:
+	ClayMeshBuilder.attach_clay_eyes(self, Vector3(0.0, 0.06, 0.68), 0.28, 0.068, true)
 	if DisplayServer.get_name() == "headless":
 		return
-	var iron_mat := MaterialLibrary.make_cast_iron_material()
+	var iron_mat := MaterialLibrary.make_cast_iron_material(Color(0.36, 0.38, 0.44))
 
+	# Smooth 28-segment plump roly-poly clay-iron kettlebell body (replaces harsh 8-sided octagon)
 	var base_inst := MeshInstance3D.new()
-	var base_cyl := CylinderMesh.new()
-	base_cyl.top_radius = 0.68
-	base_cyl.bottom_radius = 0.75
-	base_cyl.height = 0.74
-	base_cyl.radial_segments = 8
-	base_cyl.material = iron_mat
-	RenderHelper.attach_mesh(base_inst, base_cyl)
-	base_inst.position = Vector3(0.0, -0.33, 0.0)
-	base_inst.rotation_degrees = Vector3(0.0, 22.5, 0.0)
+	var base_mesh := ClayMeshBuilder.make_chamfered_cylinder(0.64, 0.73, 0.84, 0.18, 28)
+	ClayMeshBuilder.assign_mesh(base_inst, base_mesh, iron_mat)
+	base_inst.position = Vector3(0.0, -0.28, 0.0)
 	add_child(base_inst)
 
-	var shoulder_inst := MeshInstance3D.new()
-	var shoulder_cyl := CylinderMesh.new()
-	shoulder_cyl.top_radius = 0.50
-	shoulder_cyl.bottom_radius = 0.62
-	shoulder_cyl.height = 0.34
-	shoulder_cyl.radial_segments = 8
-	shoulder_cyl.material = iron_mat
-	RenderHelper.attach_mesh(shoulder_inst, shoulder_cyl)
-	shoulder_inst.position = Vector3(0.0, 0.21, 0.0)
-	shoulder_inst.rotation_degrees = Vector3(0.0, 22.5, 0.0)
-	add_child(shoulder_inst)
-
-	var neck_inst := MeshInstance3D.new()
-	var neck_cyl := CylinderMesh.new()
-	neck_cyl.top_radius = 0.24
-	neck_cyl.bottom_radius = 0.30
-	neck_cyl.height = 0.12
-	neck_cyl.radial_segments = 12
-	neck_cyl.material = iron_mat
-	RenderHelper.attach_mesh(neck_inst, neck_cyl)
-	neck_inst.position = Vector3(0.0, 0.43, 0.0)
-	add_child(neck_inst)
+	var dome_inst := MeshInstance3D.new()
+	var dome_sphere := SphereMesh.new()
+	dome_sphere.radius = 0.58
+	dome_sphere.height = 0.78
+	dome_sphere.radial_segments = 28
+	dome_sphere.rings = 14
+	dome_sphere.material = iron_mat
+	RenderHelper.attach_mesh(dome_inst, dome_sphere)
+	dome_inst.position = Vector3(0.0, 0.08, 0.0)
+	add_child(dome_inst)
 
 	var grip_inst := MeshInstance3D.new()
 	var grip_torus := TorusMesh.new()
-	grip_torus.inner_radius = 0.12
-	grip_torus.outer_radius = 0.22
-	grip_torus.rings = 20
-	grip_torus.ring_segments = 12
-	var grip_mat := MaterialLibrary.make_cast_iron_material(Color(0.42, 0.45, 0.52))
-	grip_mat.metallic = 0.86
-	grip_mat.roughness = 0.24
+	grip_torus.inner_radius = 0.13
+	grip_torus.outer_radius = 0.25
+	grip_torus.rings = 24
+	grip_torus.ring_segments = 14
+	var grip_mat := MaterialLibrary.make_silicone_soft_material(Color(0.92, 0.78, 0.52))
 	grip_torus.material = grip_mat
 	RenderHelper.attach_mesh(grip_inst, grip_torus)
-	grip_inst.position = Vector3(0.0, 0.50, 0.0)
+	grip_inst.position = Vector3(0.0, 0.52, 0.0)
 	grip_inst.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 	add_child(grip_inst)
 

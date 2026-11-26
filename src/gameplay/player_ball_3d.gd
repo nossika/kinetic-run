@@ -187,28 +187,21 @@ func _build_nodes_if_needed() -> void:
 		var sm := SphereMesh.new()
 		sm.radius = 0.55
 		sm.height = 1.10
-		sm.radial_segments = 28
-		sm.rings = 18
+		sm.radial_segments = 32
+		sm.rings = 20
 		sm.material = MaterialLibrary.make_tungsten_ball_material()
 		RenderHelper.attach_mesh(_core_mesh, sm)
 
-		var groove_mat := StandardMaterial3D.new()
-		groove_mat.albedo_color = Color(0.20, 0.34, 0.48)
-		groove_mat.metallic = 0.82
-		groove_mat.roughness = 0.24
-		groove_mat.emission_enabled = true
-		groove_mat.emission = Color(0.10, 0.26, 0.42)
-		groove_mat.emission_energy_multiplier = 0.28
-
+		var groove_mat := MaterialLibrary.make_silicone_soft_material(Color(0.96, 0.78, 0.46))
 		for idx in range(2):
 			var band := MeshInstance3D.new()
-			var ring_cyl := CylinderMesh.new()
-			ring_cyl.top_radius = 0.556
-			ring_cyl.bottom_radius = 0.556
-			ring_cyl.height = 0.052
-			ring_cyl.radial_segments = 28
-			ring_cyl.material = groove_mat
-			RenderHelper.attach_mesh(band, ring_cyl)
+			var band_torus := TorusMesh.new()
+			band_torus.inner_radius = 0.525
+			band_torus.outer_radius = 0.562
+			band_torus.rings = 28
+			band_torus.ring_segments = 12
+			band_torus.material = groove_mat
+			RenderHelper.attach_mesh(band, band_torus)
 			if idx == 1:
 				band.rotation_degrees.z = 90.0
 			_visual_root.add_child(band)
@@ -238,10 +231,10 @@ func _build_hud_ring_visuals() -> void:
 	halo_inst.name = "EquatorialHalo"
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.64
-	torus.outer_radius = 0.685
-	torus.rings = 24
+	torus.outer_radius = 0.675
+	torus.rings = 28
 	torus.ring_segments = 12
-	torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.76, 0.88, 0.98, 0.26))
+	torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.98, 0.94, 0.86, 0.22))
 	RenderHelper.attach_mesh(halo_inst, torus)
 	halo_inst.position = Vector3(0.0, 0.05, 0.0)
 	_hud_ring_root.add_child(halo_inst)
@@ -252,70 +245,79 @@ func _build_hud_ring_visuals() -> void:
 	if font != null:
 		_weight_label_3d.font = font
 	_weight_label_3d.text = "%0.1fkg" % mass
-	_weight_label_3d.font_size = 52
-	_weight_label_3d.outline_size = 12
-	_weight_label_3d.pixel_size = 0.0042
-	_weight_label_3d.modulate = Color(0.99, 0.97, 0.90)
-	_weight_label_3d.outline_modulate = Color(0.08, 0.10, 0.14, 0.96)
+	_weight_label_3d.font_size = 44
+	_weight_label_3d.outline_size = 3
+	_weight_label_3d.pixel_size = 0.0036
+	_weight_label_3d.modulate = Color(0.99, 0.96, 0.89, 0.88)
+	_weight_label_3d.outline_modulate = Color(0.32, 0.23, 0.16, 0.45)
 	_weight_label_3d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_weight_label_3d.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_weight_label_3d.double_sided = false
 	_weight_label_3d.shaded = false
 	_weight_label_3d.render_priority = 4
-	_weight_label_3d.position = Vector3(0.0, 0.86, 0.16)
+	_weight_label_3d.position = Vector3(0.0, 0.82, 0.14)
 	_weight_label_3d.rotation_degrees = Vector3(-27.0, 0.0, 0.0)
 	_hud_ring_root.add_child(_weight_label_3d)
 
-	var cyan_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.14, 0.88, 1.0, 0.86))
-	var gold_mat := MaterialLibrary.make_frosted_acrylic_material(Color(1.0, 0.78, 0.22, 0.84))
-	var puff_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.96, 0.99, 1.0, 0.82))
+	var mint_mat := MaterialLibrary.make_silicone_soft_material(Color(0.46, 0.86, 0.72))
+	var gold_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.82, 0.42))
+	var puff_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.97, 0.93))
 
-	_populate_thrust_side_visuals(_left_arrow_group, -1.0, cyan_mat, gold_mat, puff_mat)
-	_populate_thrust_side_visuals(_right_arrow_group, 1.0, cyan_mat, gold_mat, puff_mat)
+	_populate_thrust_side_visuals(_left_arrow_group, -1.0, mint_mat, gold_mat, puff_mat)
+	_populate_thrust_side_visuals(_right_arrow_group, 1.0, mint_mat, gold_mat, puff_mat)
 
 
 func _populate_thrust_side_visuals(
 	group: Node3D,
 	dir_sign: float,
-	cyan_mat: StandardMaterial3D,
+	mint_mat: StandardMaterial3D,
 	gold_mat: StandardMaterial3D,
 	puff_mat: StandardMaterial3D
 ) -> void:
-	var cam_tilt := Basis(Vector3.RIGHT, deg_to_rad(-55.0))
 	var point_rot := Basis(Vector3.BACK, deg_to_rad(-90.0 * dir_sign))
 
+	# Rounded soft clay cone-droplet pointer instead of sharp PrismMesh
 	var wedge_inst := MeshInstance3D.new()
 	wedge_inst.name = "ArrowWedge"
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.46, 0.40, 0.09)
-	prism.material = cyan_mat
-	RenderHelper.attach_mesh(wedge_inst, prism)
-	wedge_inst.transform = Transform3D(cam_tilt * point_rot, Vector3(dir_sign * 0.96, 0.12, 0.0))
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.035
+	cone.bottom_radius = 0.19
+	cone.height = 0.36
+	cone.radial_segments = 16
+	cone.material = mint_mat
+	RenderHelper.attach_mesh(wedge_inst, cone)
+	wedge_inst.transform = Transform3D(point_rot, Vector3(dir_sign * 0.96, 0.14, 0.0))
 	group.add_child(wedge_inst)
 
 	var stem_inst := MeshInstance3D.new()
 	stem_inst.name = "ArrowStem"
-	var stem_box := BoxMesh.new()
-	stem_box.size = Vector3(0.22, 0.15, 0.08)
-	stem_box.material = gold_mat
-	RenderHelper.attach_mesh(stem_inst, stem_box)
-	stem_inst.transform = Transform3D(cam_tilt, Vector3(dir_sign * 0.72, 0.12, 0.0))
+	var stem_cap := CapsuleMesh.new()
+	stem_cap.radius = 0.075
+	stem_cap.height = 0.26
+	stem_cap.radial_segments = 12
+	stem_cap.material = gold_mat
+	RenderHelper.attach_mesh(stem_inst, stem_cap)
+	stem_inst.transform = Transform3D(point_rot, Vector3(dir_sign * 0.74, 0.14, 0.0))
 	group.add_child(stem_inst)
 
+	# Soft fluffy cotton cloud puffs instead of sharp rectangular jet boxes
 	var puff_offsets: Array[Vector3] = [
-		Vector3(-dir_sign * 0.84, 0.12, 0.0),
-		Vector3(-dir_sign * 0.98, 0.14, -0.19),
-		Vector3(-dir_sign * 0.92, 0.10, 0.19),
+		Vector3(-dir_sign * 0.82, 0.14, 0.0),
+		Vector3(-dir_sign * 0.98, 0.16, -0.17),
+		Vector3(-dir_sign * 0.94, 0.12, 0.17),
 	]
-	var puff_lengths: Array[float] = [0.30, 0.22, 0.22]
+	var puff_radii: Array[float] = [0.115, 0.088, 0.082]
 	for idx in range(3):
 		var puff_inst := MeshInstance3D.new()
 		puff_inst.name = "JetPuff%d" % idx
-		var puff_box := BoxMesh.new()
-		var thickness := 0.055 if idx == 0 else 0.045
-		puff_box.size = Vector3(puff_lengths[idx], thickness, thickness)
-		puff_box.material = puff_mat
-		RenderHelper.attach_mesh(puff_inst, puff_box)
+		puff_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var puff_sphere := SphereMesh.new()
+		puff_sphere.radius = puff_radii[idx]
+		puff_sphere.height = puff_radii[idx] * 1.85
+		puff_sphere.radial_segments = 14
+		puff_sphere.rings = 8
+		puff_sphere.material = puff_mat
+		RenderHelper.attach_mesh(puff_inst, puff_sphere)
 		puff_inst.position = puff_offsets[idx]
 		group.add_child(puff_inst)
 

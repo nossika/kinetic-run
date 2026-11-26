@@ -88,12 +88,12 @@ func _ready() -> void:
 
 
 func _build_mag_iron_visuals() -> void:
+	ClayMeshBuilder.attach_clay_eyes(self, Vector3(0.0, 0.08, 0.63), 0.28, 0.062, false)
 	if DisplayServer.get_name() != "headless":
 		var cube_inst := MeshInstance3D.new()
-		var cube_mesh := BoxMesh.new()
-		cube_mesh.size = Vector3(1.25, 1.25, 1.25)
-		cube_mesh.material = MaterialLibrary.make_cast_iron_material()
-		RenderHelper.attach_mesh(cube_inst, cube_mesh)
+		var rbox := ClayMeshBuilder.make_rounded_box(Vector3(1.25, 1.25, 1.25), 0.22, 3)
+		var mat := MaterialLibrary.make_cast_iron_material(Color(0.40, 0.43, 0.50))
+		ClayMeshBuilder.assign_mesh(cube_inst, rbox, mat)
 		add_child(cube_inst)
 
 	_mag_ring = MeshInstance3D.new()
@@ -102,34 +102,38 @@ func _build_mag_iron_visuals() -> void:
 	_mag_ring.visible = is_tethered
 	if DisplayServer.get_name() != "headless":
 		var mag_torus := TorusMesh.new()
-		mag_torus.inner_radius = 0.55
+		mag_torus.inner_radius = 0.54
 		mag_torus.outer_radius = 0.78
-		mag_torus.rings = 24
-		mag_torus.ring_segments = 12
-		mag_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.14, 0.92, 1.0, 0.85))
+		mag_torus.rings = 28
+		mag_torus.ring_segments = 14
+		mag_torus.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.62, 0.84, 0.96, 0.76))
 		RenderHelper.attach_mesh(_mag_ring, mag_torus)
 	add_child(_mag_ring)
 
 
 func _build_balloon_visuals() -> void:
+	ClayMeshBuilder.attach_clay_eyes(self, Vector3(0.0, 0.06, 0.70), 0.24, 0.058, true)
 	if DisplayServer.get_name() == "headless":
 		return
 	var balloon_inst := MeshInstance3D.new()
 	var balloon_mesh := SphereMesh.new()
 	balloon_mesh.radius = 0.72
 	balloon_mesh.height = 1.44
-	balloon_mesh.material = MaterialLibrary.make_silicone_soft_material(Color(1.0, 0.52, 0.34))
+	balloon_mesh.radial_segments = 28
+	balloon_mesh.rings = 16
+	balloon_mesh.material = MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.64, 0.50))
 	RenderHelper.attach_mesh(balloon_inst, balloon_mesh)
 	add_child(balloon_inst)
 
 	var knot_inst := MeshInstance3D.new()
-	var knot_cyl := CylinderMesh.new()
-	knot_cyl.top_radius = 0.08
-	knot_cyl.bottom_radius = 0.14
-	knot_cyl.height = 0.16
-	knot_cyl.material = MaterialLibrary.make_silicone_soft_material(Color(0.92, 0.42, 0.26))
-	RenderHelper.attach_mesh(knot_inst, knot_cyl)
-	knot_inst.position = Vector3(0.0, -0.76, 0.0)
+	var knot_torus := TorusMesh.new()
+	knot_torus.inner_radius = 0.04
+	knot_torus.outer_radius = 0.13
+	knot_torus.rings = 16
+	knot_torus.ring_segments = 10
+	knot_torus.material = MaterialLibrary.make_silicone_soft_material(Color(0.94, 0.54, 0.40))
+	RenderHelper.attach_mesh(knot_inst, knot_torus)
+	knot_inst.position = Vector3(0.0, -0.74, 0.0)
 	add_child(knot_inst)
 
 

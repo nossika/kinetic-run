@@ -136,11 +136,10 @@ func _build_start_platform() -> void:
 		Vector3(TrackChunkBase.STANDARD_WIDTH, 0.6, 14.0),
 		Color(1.0, 0.98, 0.95)
 	)
-	var rail_col := Color(0.20, 0.85, 1.0)
-	start_chunk._add_guard_rail(Vector3(-6.45, 0.55, -3.0), Vector3(0.4, 1.1, 14.0), rail_col)
-	start_chunk._add_guard_rail(Vector3(6.45, 0.55, -3.0), Vector3(0.4, 1.1, 14.0), rail_col)
-	start_chunk._add_guard_rail(Vector3(0.0, 0.55, 3.8), Vector3(12.9, 1.1, 0.5), rail_col)
-	# Give player an immediate welcoming BoostPad right near the start!
+	var rail_col := Color(0.58, 0.84, 0.75)
+	start_chunk._add_guard_rail(Vector3(-6.45, 0.52, -3.0), Vector3(0.46, 1.04, 14.0), rail_col)
+	start_chunk._add_guard_rail(Vector3(6.45, 0.52, -3.0), Vector3(0.46, 1.04, 14.0), rail_col)
+	start_chunk._add_guard_rail(Vector3(0.0, 0.52, 3.8), Vector3(12.9, 1.04, 0.52), rail_col)
 	_spawn_entity(TrackEntityFactory.create_boost_pad(Vector3(0.0, 0.06, -7.5)))
 
 
@@ -150,30 +149,27 @@ func _build_finish_archway(z_pos: float) -> void:
 	finish_node._add_floor_slab(
 		Vector3(0.0, -0.3, z_pos - FINISH_RUNWAY_LEN * 0.5),
 		Vector3(15.0, 0.6, FINISH_RUNWAY_LEN),
-		Color(0.94, 1.0, 0.94)
+		Color(0.96, 1.0, 0.95)
 	)
 
-	var arch_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.24, 0.96, 0.60, 0.86))
+	var pillar_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.95, 0.88))
+	var bar_mat := MaterialLibrary.make_silicone_soft_material(Color(0.54, 0.86, 0.72))
+	var pillar_mesh := ClayMeshBuilder.make_chamfered_cylinder(0.36, 0.42, 7.4, 0.12, 22)
 
 	for side_x in [-6.75, 6.75]:
 		var pillar_root := Node3D.new()
 		pillar_root.position = Vector3(side_x, 0.0, z_pos)
 		_track_root.add_child(pillar_root)
-		MaterialLibrary.attach_anchored_flange_base(pillar_root, 0.0, 0.58, 0.58, false)
+		MaterialLibrary.attach_anchored_flange_base(pillar_root, 0.0, 0.56, 0.56, false)
 
 		var pillar := MeshInstance3D.new()
-		var pm := BoxMesh.new()
-		pm.size = Vector3(0.65, 7.5, 0.65)
-		pm.material = arch_mat
-		RenderHelper.attach_mesh(pillar, pm)
-		pillar.position = Vector3(0.0, 3.75, 0.0)
+		ClayMeshBuilder.assign_mesh(pillar, pillar_mesh, pillar_mat)
+		pillar.position = Vector3(0.0, 3.7, 0.0)
 		pillar_root.add_child(pillar)
 
 	var crossbar := MeshInstance3D.new()
-	var cm := BoxMesh.new()
-	cm.size = Vector3(14.4, 0.75, 0.75)
-	cm.material = arch_mat
-	RenderHelper.attach_mesh(crossbar, cm)
+	var cm := ClayMeshBuilder.make_rounded_box(Vector3(14.6, 0.86, 0.86), 0.30, 3)
+	ClayMeshBuilder.assign_mesh(crossbar, cm, bar_mat)
 	crossbar.position = Vector3(0.0, 7.4, z_pos)
 	_track_root.add_child(crossbar)
 

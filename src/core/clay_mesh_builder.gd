@@ -390,10 +390,14 @@ static func attach_clay_eyes(
 	eye_spacing: float = 0.24,
 	eye_radius: float = 0.065,
 	with_blush: bool = true,
-	force_build: bool = false
+	force_build: bool = false,
+	meta_owner: Node = null
 ) -> Node3D:
 	if parent == null:
 		return null
+	parent.set_meta("has_clay_eyes", true)
+	if meta_owner != null:
+		meta_owner.set_meta("has_clay_eyes", true)
 	var existing := parent.get_node_or_null("ClayEyes")
 	if existing != null:
 		parent.remove_child(existing)

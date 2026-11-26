@@ -190,6 +190,7 @@ func _test_crate_tiers_and_slime_momentum_thresholds() -> void:
 	assert_true(slime is RigidBody3D, "BouncerSlime extends RigidBody3D")
 	assert_false(_has_area3d_child(slime), "BouncerSlime has zero Area3D child sensors")
 	assert_eq(str(slime.get_meta("weight_label", "")), "3kg", "BouncerSlime exposes 3kg weight_label")
+	assert_true(bool(slime.get_meta("has_clay_eyes", false)), "BouncerSlime character sports cute clay eyes")
 	if slime is RigidBody3D:
 		var slime_rb := slime as RigidBody3D
 		assert_approx(slime_rb.mass, 3.0, 0.01, "BouncerSlime mass is 3.0kg")
@@ -277,6 +278,7 @@ func _test_shield_brute_rigidbody_and_slime_zone() -> void:
 		assert_approx(brute.linear_damp, 1.2, 0.02, "Resting ShieldBrute linear_damp is 1.2")
 		assert_approx(brute.angular_damp, 1.8, 0.02, "Resting ShieldBrute angular_damp is 1.8")
 	assert_eq(str(brute.get_meta("weight_label", "")), "20kg", "ShieldBrute exposes 20kg weight_label")
+	assert_true(bool(brute.get_meta("has_clay_eyes", false)), "ShieldBrute character sports cute clay eyes")
 	assert_false(_has_area3d_child(brute), "ShieldBrute has zero Area3D child sensors")
 	assert_true("min_smash_impulse" in brute, "ShieldBrute defines min_smash_impulse")
 	if "min_smash_impulse" in brute:
@@ -412,6 +414,10 @@ func _test_boost_pad_anchored_bumper_and_barrel_rigidbody_chain() -> void:
 		bool(bumper.get_meta("is_anchored_fixed", false)),
 		true,
 		"PinballBumper exposes is_anchored_fixed == true"
+	)
+	assert_true(
+		bumper.get_node_or_null("BumperTopFixedStencil") == null,
+		"PinballBumper removes cluttered FIXED top stencil text"
 	)
 	assert_true(bumper.physics_material_override != null, "PinballBumper defines PhysicsMaterial")
 	if bumper.physics_material_override != null:
@@ -568,6 +574,7 @@ func _test_spring_pad_bonus_ring_and_aerial_blockers() -> void:
 		assert_true(balloon is RigidBody3D, "soft_balloon AerialBlocker extends RigidBody3D")
 		assert_false(_has_area3d_child(balloon), "soft_balloon AerialBlocker has zero Area3D child sensors")
 		assert_eq(str(balloon.get_meta("weight_label", "")), "250g", "soft_balloon AerialBlocker exposes 250g label")
+		assert_true(bool(balloon.get_meta("has_clay_eyes", false)), "soft_balloon AerialBlocker sports cute clay eyes")
 		if balloon is RigidBody3D:
 			var b_rb := balloon as RigidBody3D
 			assert_approx(b_rb.mass, 0.25, 0.01, "soft_balloon mass is 0.25kg")
@@ -605,6 +612,7 @@ func _test_spring_pad_bonus_ring_and_aerial_blockers() -> void:
 		assert_true(mag_iron is RigidBody3D, "mag_iron AerialBlocker extends RigidBody3D")
 		assert_false(_has_area3d_child(mag_iron), "mag_iron AerialBlocker has zero Area3D child sensors")
 		assert_eq(str(mag_iron.get_meta("weight_label", "")), "12kg", "mag_iron AerialBlocker exposes 12kg label")
+		assert_true(bool(mag_iron.get_meta("has_clay_eyes", false)), "mag_iron AerialBlocker sports cute clay eyes")
 		if mag_iron is RigidBody3D:
 			var m_rb := mag_iron as RigidBody3D
 			assert_approx(m_rb.mass, 12.0, 0.01, "mag_iron mass is 12.0kg")
@@ -959,6 +967,10 @@ func _test_wind_zone_3d_vectors_synergy_and_indiscriminate_rigidbodies() -> void
 		await scene_tree.physics_frame
 		min_pin_up = minf(min_pin_up, wind_pin.transform.basis.y.normalized().dot(Vector3.UP))
 
+	assert_lt(gale_zone.wind_tint.a, 0.50, "WindZone uses softened storybook translucent alpha (< 0.50)")
+	assert_false(bool(wind_crate.get_meta("has_clay_eyes", false)), "Wooden crate remains pure craft prop without eyes")
+	assert_false(bool(wind_pin.get_meta("has_clay_eyes", false)), "WoodenPin remains pure craft prop without eyes")
+	assert_false(bool(wind_husk.get_meta("has_clay_eyes", false)), "ExplosiveBarrel remains pure craft prop without eyes")
 	assert_gt(wind_crate.position.x - (-3.0), 0.8, "WindZone blows 500g light crate substantially along +X")
 	assert_lt(min_pin_up, 0.78, "WindZone topples 800g WoodenPin via aerodynamic torque (up_dot < 0.78)")
 	assert_gt(wind_pin.position.x - (-3.0), 0.4, "WindZone pushes toppled 800g WoodenPin along +X")

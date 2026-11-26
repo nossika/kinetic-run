@@ -45,32 +45,30 @@ func _ready() -> void:
 
 	_barrel_mesh_inst = MeshInstance3D.new()
 	_barrel_mesh_inst.name = "BarrelMesh"
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.52
-	cyl.bottom_radius = 0.52
-	cyl.height = 1.25
-	cyl.material = (
+	var cyl := ClayMeshBuilder.make_chamfered_cylinder(0.52, 0.52, 1.25, 0.11, 24)
+	var b_mat := (
 		MaterialLibrary.make_charred_husk_material()
 		if is_detonated
 		else MaterialLibrary.make_retro_barrel_material()
 	)
-	RenderHelper.attach_mesh(_barrel_mesh_inst, cyl)
+	ClayMeshBuilder.assign_mesh(_barrel_mesh_inst, cyl, b_mat)
 	add_child(_barrel_mesh_inst)
 
 	if DisplayServer.get_name() != "headless":
-		var rim_mat := MaterialLibrary.make_cast_iron_material(Color(0.36, 0.38, 0.43))
-		var rim_mesh := CylinderMesh.new()
-		rim_mesh.top_radius = 0.545
-		rim_mesh.bottom_radius = 0.545
-		rim_mesh.height = 0.07
-		rim_mesh.material = rim_mat
+		var rim_mat := MaterialLibrary.make_silicone_soft_material(Color(0.96, 0.88, 0.74))
+		var rim_torus := TorusMesh.new()
+		rim_torus.inner_radius = 0.47
+		rim_torus.outer_radius = 0.555
+		rim_torus.rings = 24
+		rim_torus.ring_segments = 12
+		rim_torus.material = rim_mat
 		for sy in [-1.0, 1.0]:
 			var rim_inst := MeshInstance3D.new()
-			RenderHelper.attach_mesh(rim_inst, rim_mesh)
-			rim_inst.position = Vector3(0.0, sy * 0.59, 0.0)
+			RenderHelper.attach_mesh(rim_inst, rim_torus)
+			rim_inst.position = Vector3(0.0, sy * 0.52, 0.0)
 			add_child(rim_inst)
 
-	MaterialLibrary.attach_weight_labels(self, weight_label, Vector3(1.06, 1.25, 1.06), Color(0.98, 0.96, 0.90))
+	MaterialLibrary.attach_weight_labels(self, weight_label, Vector3(1.06, 1.25, 1.06), Color(0.50, 0.30, 0.22))
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 

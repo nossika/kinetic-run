@@ -54,7 +54,7 @@ func _ready() -> void:
 	add_child(col)
 
 	_build_slime_visuals()
-	MaterialLibrary.attach_weight_labels(self, "3kg", Vector3(1.32, 1.18, 1.32), Color(0.95, 1.0, 0.92))
+	MaterialLibrary.attach_weight_labels(self, "3kg", Vector3(1.32, 1.18, 1.32), Color(0.24, 0.44, 0.32))
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
 
@@ -63,24 +63,29 @@ func _build_slime_visuals() -> void:
 	_visual_root = Node3D.new()
 	_visual_root.name = "VisualRoot"
 	add_child(_visual_root)
+	ClayMeshBuilder.attach_clay_eyes(_visual_root, Vector3(0.0, 0.08, 0.56), 0.25, 0.065, true, false, self)
 	if DisplayServer.get_name() == "headless":
 		return
 
 	var outer_inst := MeshInstance3D.new()
 	outer_inst.name = "OuterJelly"
 	var outer_sphere := SphereMesh.new()
-	outer_sphere.radius = 0.64
-	outer_sphere.height = 1.12
-	outer_sphere.material = MaterialLibrary.make_jelly_outer_material(Color(0.28, 0.95, 0.52))
+	outer_sphere.radius = 0.65
+	outer_sphere.height = 1.14
+	outer_sphere.radial_segments = 28
+	outer_sphere.rings = 16
+	outer_sphere.material = MaterialLibrary.make_jelly_outer_material(Color(0.44, 0.90, 0.64))
 	RenderHelper.attach_mesh(outer_inst, outer_sphere)
 	_visual_root.add_child(outer_inst)
 
 	var core_inst := MeshInstance3D.new()
 	core_inst.name = "InnerCore"
 	var core_sphere := SphereMesh.new()
-	core_sphere.radius = 0.38
-	core_sphere.height = 0.68
-	core_sphere.material = MaterialLibrary.make_jelly_core_material(Color(0.45, 1.0, 0.62))
+	core_sphere.radius = 0.36
+	core_sphere.height = 0.64
+	core_sphere.radial_segments = 20
+	core_sphere.rings = 12
+	core_sphere.material = MaterialLibrary.make_jelly_core_material(Color(0.62, 0.96, 0.74))
 	RenderHelper.attach_mesh(core_inst, core_sphere)
 	_visual_root.add_child(core_inst)
 

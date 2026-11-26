@@ -13,34 +13,34 @@ func _ready() -> void:
 	add_child(col)
 
 	var pad_mesh := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(2.3, 0.10, 3.5)
-	bm.material = MaterialLibrary.make_frosted_acrylic_material(Color(0.12, 0.88, 0.98))
-	RenderHelper.attach_mesh(pad_mesh, bm)
+	var pebble := ClayMeshBuilder.make_pebble_pad(Vector2(2.3, 3.5), 0.10, 24)
+	var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.50, 0.85, 0.71))
+	ClayMeshBuilder.assign_mesh(pad_mesh, pebble, pad_mat)
 	add_child(pad_mesh)
 
 	if DisplayServer.get_name() != "headless":
-		var chev_mat := StandardMaterial3D.new()
-		chev_mat.albedo_color = Color(0.80, 1.0, 0.98)
+		var chev_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.97, 0.90))
 		chev_mat.emission_enabled = true
-		chev_mat.emission = Color(0.24, 0.96, 0.92)
-		chev_mat.emission_energy_multiplier = 0.95
+		chev_mat.emission = Color(0.76, 0.98, 0.88)
+		chev_mat.emission_energy_multiplier = 0.35
 
-		var arm_mesh := BoxMesh.new()
-		arm_mesh.size = Vector3(0.76, 0.035, 0.17)
-		arm_mesh.material = chev_mat
+		var arm_cap := CapsuleMesh.new()
+		arm_cap.radius = 0.055
+		arm_cap.height = 0.74
+		arm_cap.radial_segments = 12
+		arm_cap.material = chev_mat
 
-		for z_off in [0.95, 0.0, -0.95]:
+		for z_off in [0.92, 0.0, -0.92]:
 			var left_arm := MeshInstance3D.new()
-			RenderHelper.attach_mesh(left_arm, arm_mesh)
-			left_arm.position = Vector3(-0.32, 0.068, z_off)
-			left_arm.rotation_degrees = Vector3(0.0, 32.0, 0.0)
+			RenderHelper.attach_mesh(left_arm, arm_cap)
+			left_arm.position = Vector3(-0.28, 0.062, z_off)
+			left_arm.rotation_degrees = Vector3(90.0, -56.0, 0.0)
 			add_child(left_arm)
 
 			var right_arm := MeshInstance3D.new()
-			RenderHelper.attach_mesh(right_arm, arm_mesh)
-			right_arm.position = Vector3(0.32, 0.068, z_off)
-			right_arm.rotation_degrees = Vector3(0.0, -32.0, 0.0)
+			RenderHelper.attach_mesh(right_arm, arm_cap)
+			right_arm.position = Vector3(0.28, 0.062, z_off)
+			right_arm.rotation_degrees = Vector3(90.0, 56.0, 0.0)
 			add_child(right_arm)
 
 	body_entered.connect(_on_body_entered)

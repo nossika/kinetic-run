@@ -12,10 +12,9 @@ func _ready() -> void:
 	add_child(col)
 
 	var mesh_inst := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(zone_size.x, 0.08, zone_size.y)
-	mesh.material = MaterialLibrary.make_jelly_outer_material(Color(0.35, 0.88, 0.28))
-	RenderHelper.attach_mesh(mesh_inst, mesh)
+	var pebble := ClayMeshBuilder.make_pebble_pad(zone_size, 0.10, 28)
+	var jelly_mat := MaterialLibrary.make_jelly_outer_material(Color(0.50, 0.88, 0.46, 0.68))
+	ClayMeshBuilder.assign_mesh(mesh_inst, pebble, jelly_mat)
 	add_child(mesh_inst)
 
 	body_entered.connect(_on_body_entered)

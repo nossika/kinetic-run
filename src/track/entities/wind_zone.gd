@@ -7,7 +7,7 @@ var zone_size: Vector3 = Vector3(6.0, 3.6, 12.0)
 var wind_preset: String = "cross_right"
 var wind_dir_local: Vector3 = Vector3.RIGHT
 var wind_force_newtons: float = 26.0
-var wind_tint: Color = Color(0.36, 0.90, 1.0, 0.58)
+var wind_tint: Color = Color(0.62, 0.84, 0.96, 0.38)
 
 var _visual_phase: float = 0.0
 var _flow_root: Node3D = null
@@ -27,35 +27,35 @@ func configure_wind(p_size: Vector3, p_preset: String, p_force: float = -1.0) ->
 		"cross_left":
 			wind_dir_local = Vector3(-1.0, 0.0, 0.0)
 			default_force = 26.0
-			wind_tint = Color(0.36, 0.90, 1.0, 0.58)
+			wind_tint = Color(0.64, 0.84, 0.96, 0.38)
 		"cross_right":
 			wind_dir_local = Vector3(1.0, 0.0, 0.0)
 			default_force = 26.0
-			wind_tint = Color(0.36, 0.90, 1.0, 0.58)
+			wind_tint = Color(0.64, 0.84, 0.96, 0.38)
 		"tailwind":
 			wind_dir_local = Vector3(0.0, 0.0, -1.0)
 			default_force = 28.0
-			wind_tint = Color(0.24, 0.98, 0.68, 0.60)
+			wind_tint = Color(0.56, 0.88, 0.76, 0.40)
 		"headwind":
 			wind_dir_local = Vector3(0.0, 0.0, 1.0)
 			default_force = 21.0
-			wind_tint = Color(1.0, 0.58, 0.22, 0.56)
+			wind_tint = Color(0.96, 0.68, 0.52, 0.38)
 		"updraft":
 			wind_dir_local = Vector3(0.0, 0.94, -0.34).normalized()
 			default_force = 44.0
-			wind_tint = Color(0.24, 1.0, 0.72, 0.64)
+			wind_tint = Color(0.58, 0.90, 0.78, 0.42)
 		"high_downdraft_left":
 			wind_dir_local = Vector3(-0.45, -0.89, 0.0).normalized()
 			default_force = 22.0
-			wind_tint = Color(1.0, 0.56, 0.24, 0.56)
+			wind_tint = Color(0.96, 0.68, 0.52, 0.38)
 		"high_downdraft_right":
 			wind_dir_local = Vector3(0.45, -0.89, 0.0).normalized()
 			default_force = 22.0
-			wind_tint = Color(1.0, 0.56, 0.24, 0.56)
+			wind_tint = Color(0.96, 0.68, 0.52, 0.38)
 		_:
 			wind_dir_local = Vector3(1.0, 0.0, 0.0)
 			default_force = 26.0
-			wind_tint = Color(0.36, 0.90, 1.0, 0.58)
+			wind_tint = Color(0.64, 0.84, 0.96, 0.38)
 
 	wind_force_newtons = p_force if p_force > 0.0 else default_force
 
@@ -91,22 +91,9 @@ func _build_wind_visuals() -> void:
 		return
 
 	var ribbon_mat := MaterialLibrary.make_frosted_acrylic_material(wind_tint)
-	var arrow_color := wind_tint.lightened(0.22)
-	arrow_color.a = 0.78
+	var arrow_color := wind_tint.lerp(Color(1.0, 0.98, 0.94), 0.35)
+	arrow_color.a = 0.56
 	var arrow_mat := MaterialLibrary.make_frosted_acrylic_material(arrow_color)
-	var rim_color := Color(wind_tint.r, wind_tint.g, wind_tint.b, 0.28)
-	var rim_mat := MaterialLibrary.make_frosted_acrylic_material(rim_color)
-
-	# Subtle base boundary strips on the bottom face of the wind volume so edges read clearly
-	var edge_box := BoxMesh.new()
-	edge_box.size = Vector3(0.08, 0.05, zone_size.z)
-	edge_box.material = rim_mat
-	for side_x in [-1.0, 1.0]:
-		var edge := MeshInstance3D.new()
-		edge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		RenderHelper.attach_mesh(edge, edge_box)
-		edge.position = Vector3(side_x * (zone_size.x * 0.5 - 0.04), -zone_size.y * 0.5 + 0.03, 0.0)
-		add_child(edge)
 
 	# Orient _flow_root so its -Z axis points strictly along wind_dir_local
 	_flow_root = Node3D.new()
@@ -116,13 +103,18 @@ func _build_wind_visuals() -> void:
 	add_child(_flow_root)
 
 	var flow_span := _compute_flow_span(wind_dir_local)
-	var cross_w := maxf(1.4, _compute_flow_span(_flow_root.basis.x) * 0.76)
-	var cross_h := maxf(1.2, _compute_flow_span(_flow_root.basis.y) * 0.68)
-	var ribbon_base_len := clampf(flow_span * 0.26, 1.4, 2.6)
+	var cross_w := maxf(1.4, _compute_flow_span(_flow_root.basis.x) * 0.74)
+	var cross_h := maxf(1.2, _compute_flow_span(_flow_root.basis.y) * 0.66)
+	var ribbon_base_len := clampf(flow_span * 0.24, 1.3, 2.4)
 
-	var rbox := BoxMesh.new()
-	rbox.size = Vector3(0.055, 0.035, ribbon_base_len)
-	rbox.material = ribbon_mat
+	# Soft rounded capsule breeze streamlines instead of sharp rectangular BoxMesh strips
+	var cap_rot := Basis(Vector3.RIGHT, deg_to_rad(90.0))
+	var rcap := CapsuleMesh.new()
+	rcap.radius = 0.032
+	rcap.height = ribbon_base_len
+	rcap.radial_segments = 10
+	rcap.rings = 4
+	rcap.material = ribbon_mat
 
 	_ribbon_items.clear()
 	for i in range(RIBBON_COUNT):
@@ -134,7 +126,8 @@ func _build_wind_visuals() -> void:
 
 		var rib := MeshInstance3D.new()
 		rib.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		RenderHelper.attach_mesh(rib, rbox)
+		rib.basis = cap_rot
+		RenderHelper.attach_mesh(rib, rcap)
 		_flow_root.add_child(rib)
 
 		_ribbon_items.append({
@@ -143,19 +136,23 @@ func _build_wind_visuals() -> void:
 			"y": v * cross_h,
 			"offset": stagger,
 			"span": flow_span,
+			"base_basis": cap_rot,
 		})
 
-	# Three crisp 3D chevron arrowheads pointing along wind_dir_local (-Z of _flow_root)
-	var chevron_rot := Basis(Vector3.RIGHT, deg_to_rad(-90.0))
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.68, 0.56, 0.10)
-	prism.material = arrow_mat
-	for idx in range(3):
-		var z_frac := (float(idx) - 1.0) * 0.28 * flow_span
+	# Soft rounded breeze droplet cones pointing along -Z of _flow_root
+	var cone_rot := Basis(Vector3.RIGHT, deg_to_rad(-90.0))
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.035
+	cone.bottom_radius = 0.22
+	cone.height = 0.44
+	cone.radial_segments = 16
+	cone.material = arrow_mat
+	for idx in range(2):
+		var z_frac := (float(idx) - 0.5) * 0.34 * flow_span
 		var chev := MeshInstance3D.new()
 		chev.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		RenderHelper.attach_mesh(chev, prism)
-		chev.transform = Transform3D(chevron_rot, Vector3(0.0, 0.0, z_frac))
+		RenderHelper.attach_mesh(chev, cone)
+		chev.transform = Transform3D(cone_rot, Vector3(0.0, 0.0, z_frac))
 		_flow_root.add_child(chev)
 
 	_update_ribbon_transforms()
@@ -175,8 +172,11 @@ func _update_ribbon_transforms() -> void:
 		var t := fposmod(_visual_phase + float(item["offset"]), 1.0)
 		var z_pos := lerpf(span * 0.44, -span * 0.44, t)
 		var envelope := sin(t * PI)
-		node.position = Vector3(float(item["x"]), float(item["y"]), z_pos)
-		node.scale = Vector3(maxf(0.15, envelope), maxf(0.15, envelope), maxf(0.20, envelope))
+		var base_b: Basis = item["base_basis"]
+		node.transform = Transform3D(
+			base_b.scaled(Vector3(maxf(0.25, envelope), maxf(0.25, envelope), maxf(0.25, envelope))),
+			Vector3(float(item["x"]), float(item["y"]), z_pos)
+		)
 
 
 func _is_obstacle_wind_active() -> bool:

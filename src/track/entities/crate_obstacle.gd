@@ -55,7 +55,7 @@ func _ready() -> void:
 
 	_build_crate_visuals(box_size, is_heavy)
 
-	var label_color := Color(0.99, 0.92, 0.68) if is_heavy else Color(0.24, 0.14, 0.06)
+	var label_color := Color(0.98, 0.93, 0.82) if is_heavy else Color(0.46, 0.32, 0.20)
 	MaterialLibrary.attach_weight_labels(self, weight_label, box_size, label_color)
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
@@ -65,10 +65,10 @@ func _build_crate_visuals(box_size: Vector3, is_heavy: bool) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	var mesh_inst := MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = box_size
-	box_mesh.material = MaterialLibrary.make_wood_crate_material(is_heavy)
-	RenderHelper.attach_mesh(mesh_inst, box_mesh)
+	var bevel := 0.16 if is_heavy else 0.14
+	var rbox := ClayMeshBuilder.make_rounded_box(box_size, bevel, 3)
+	var mat := MaterialLibrary.make_wood_crate_material(is_heavy)
+	ClayMeshBuilder.assign_mesh(mesh_inst, rbox, mat)
 	add_child(mesh_inst)
 
 	if is_heavy:
@@ -78,28 +78,17 @@ func _build_crate_visuals(box_size: Vector3, is_heavy: bool) -> void:
 func _build_heavy_trim_bands(box_size: Vector3) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var trim_mat := MaterialLibrary.make_cast_iron_material(Color(0.20, 0.18, 0.17))
-
+	var trim_mat := MaterialLibrary.make_silicone_soft_material(Color(0.46, 0.34, 0.25))
+	var band_mesh := ClayMeshBuilder.make_rounded_box(
+		Vector3(box_size.x + 0.02, 0.09, box_size.z + 0.02),
+		0.04,
+		2
+	)
 	for sy in [-1.0, 1.0]:
 		var band_inst := MeshInstance3D.new()
-		var band_mesh := BoxMesh.new()
-		band_mesh.size = Vector3(box_size.x + 0.025, 0.085, box_size.z + 0.025)
-		band_mesh.material = trim_mat
-		RenderHelper.attach_mesh(band_inst, band_mesh)
-		band_inst.position = Vector3(0.0, sy * box_size.y * 0.38, 0.0)
+		ClayMeshBuilder.assign_mesh(band_inst, band_mesh, trim_mat)
+		band_inst.position = Vector3(0.0, sy * box_size.y * 0.34, 0.0)
 		add_child(band_inst)
-
-	var post_offset_x := box_size.x * 0.5 - 0.035
-	var post_offset_z := box_size.z * 0.5 - 0.035
-	var post_mesh := BoxMesh.new()
-	post_mesh.size = Vector3(0.09, box_size.y + 0.02, 0.09)
-	post_mesh.material = trim_mat
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			var post_inst := MeshInstance3D.new()
-			RenderHelper.attach_mesh(post_inst, post_mesh)
-			post_inst.position = Vector3(sx * post_offset_x, 0.0, sz * post_offset_z)
-			add_child(post_inst)
 
 
 func _physics_process(_delta: float) -> void:

@@ -36,11 +36,11 @@ func _ready() -> void:
 	add_child(_top_pad)
 
 	if DisplayServer.get_name() != "headless":
-		var coil_mat := MaterialLibrary.make_cast_iron_material(Color(0.24, 0.26, 0.30))
+		var coil_mat := MaterialLibrary.make_silicone_soft_material(Color(0.58, 0.56, 0.54))
 		var coil_torus := TorusMesh.new()
-		coil_torus.inner_radius = 0.56
-		coil_torus.outer_radius = 0.70
-		coil_torus.rings = 20
+		coil_torus.inner_radius = 0.54
+		coil_torus.outer_radius = 0.69
+		coil_torus.rings = 24
 		coil_torus.ring_segments = 12
 		coil_torus.material = coil_mat
 
@@ -52,31 +52,24 @@ func _ready() -> void:
 			_coil_root.add_child(ring_inst)
 
 		var pad_inst := MeshInstance3D.new()
-		var pad_box := BoxMesh.new()
-		pad_box.size = Vector3(2.05, 0.12, 2.20)
-		pad_box.material = MaterialLibrary.make_silicone_soft_material(Color(1.0, 0.84, 0.16))
-		RenderHelper.attach_mesh(pad_inst, pad_box)
+		var pad_cyl := ClayMeshBuilder.make_chamfered_cylinder(1.02, 1.06, 0.16, 0.065, 24)
+		var pad_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.82, 0.34))
+		ClayMeshBuilder.assign_mesh(pad_inst, pad_cyl, pad_mat)
 		_top_pad.add_child(pad_inst)
 
-		var arrow_lbl := Label3D.new()
-		arrow_lbl.name = "SpringArrowStencil"
-		var font := load(MaterialLibrary.BUNDLED_FONT_PATH) as Font
-		if font != null:
-			arrow_lbl.font = font
-		arrow_lbl.text = "▲▲"
-		arrow_lbl.font_size = 56
-		arrow_lbl.outline_size = 12
-		arrow_lbl.pixel_size = 0.0055
-		arrow_lbl.modulate = Color(0.16, 0.12, 0.06, 0.96)
-		arrow_lbl.outline_modulate = Color(1.0, 0.96, 0.78, 0.92)
-		arrow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		arrow_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		arrow_lbl.double_sided = false
-		arrow_lbl.shaded = false
-		arrow_lbl.render_priority = 3
-		arrow_lbl.position = Vector3(0.0, 0.072, 0.0)
-		arrow_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-		_top_pad.add_child(arrow_lbl)
+		# Clean rounded relief cream chevron instead of harsh black-outlined text stencil
+		var chev_mat := MaterialLibrary.make_silicone_soft_material(Color(0.99, 0.96, 0.90))
+		var arm_cap := CapsuleMesh.new()
+		arm_cap.radius = 0.055
+		arm_cap.height = 0.58
+		arm_cap.radial_segments = 12
+		arm_cap.material = chev_mat
+		for side_sign in [-1.0, 1.0]:
+			var arm := MeshInstance3D.new()
+			RenderHelper.attach_mesh(arm, arm_cap)
+			arm.position = Vector3(side_sign * 0.18, 0.085, 0.0)
+			arm.rotation_degrees = Vector3(90.0, side_sign * -35.0, 0.0)
+			_top_pad.add_child(arm)
 
 	body_entered.connect(_on_body_entered)
 

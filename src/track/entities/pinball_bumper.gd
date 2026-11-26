@@ -28,51 +28,24 @@ func _ready() -> void:
 	col.shape = cyl_shape
 	add_child(col)
 
-	MaterialLibrary.attach_anchored_flange_base(self, -0.65, 0.82, 0.82, true)
+	MaterialLibrary.attach_anchored_flange_base(self, -0.65, 0.76, 0.76, false)
 
 	var post_inst := MeshInstance3D.new()
-	var post_mesh := CylinderMesh.new()
-	post_mesh.top_radius = 0.44
-	post_mesh.bottom_radius = 0.50
-	post_mesh.height = 1.24
-	var post_mat := MaterialLibrary.make_cast_iron_material(Color(0.55, 0.58, 0.65))
-	post_mat.metallic = 0.84
-	post_mat.roughness = 0.24
-	post_mesh.material = post_mat
-	RenderHelper.attach_mesh(post_inst, post_mesh)
+	var post_mesh := ClayMeshBuilder.make_chamfered_cylinder(0.46, 0.50, 1.20, 0.16, 24)
+	var post_mat := MaterialLibrary.make_silicone_soft_material(Color(0.98, 0.94, 0.87))
+	ClayMeshBuilder.assign_mesh(post_inst, post_mesh, post_mat)
 	add_child(post_inst)
-
-	if DisplayServer.get_name() != "headless":
-		var cap_lbl := Label3D.new()
-		cap_lbl.name = "BumperTopFixedStencil"
-		var font := load(MaterialLibrary.BUNDLED_FONT_PATH) as Font
-		if font != null:
-			cap_lbl.font = font
-		cap_lbl.text = "FIXED"
-		cap_lbl.font_size = 44
-		cap_lbl.outline_size = 11
-		cap_lbl.pixel_size = 0.0042
-		cap_lbl.modulate = Color(1.0, 0.86, 0.26)
-		cap_lbl.outline_modulate = Color(0.08, 0.10, 0.14, 0.96)
-		cap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cap_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		cap_lbl.double_sided = false
-		cap_lbl.shaded = false
-		cap_lbl.render_priority = 3
-		cap_lbl.position = Vector3(0.0, 0.635, 0.0)
-		cap_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-		add_child(cap_lbl)
 
 	_cushion_ring = MeshInstance3D.new()
 	_cushion_ring.name = "SiliconeBounceRing"
 	var ring_mesh := TorusMesh.new()
 	ring_mesh.inner_radius = 0.42
 	ring_mesh.outer_radius = 0.80
-	ring_mesh.rings = 24
+	ring_mesh.rings = 28
 	ring_mesh.ring_segments = 16
-	ring_mesh.material = MaterialLibrary.make_silicone_soft_material(Color(1.0, 0.38, 0.62))
+	ring_mesh.material = MaterialLibrary.make_silicone_soft_material(Color(0.95, 0.54, 0.58))
 	RenderHelper.attach_mesh(_cushion_ring, ring_mesh)
-	_cushion_ring.position = Vector3(0.0, 0.08, 0.0)
+	_cushion_ring.position = Vector3(0.0, 0.10, 0.0)
 	add_child(_cushion_ring)
 	call_deferred("_bind_ball_contact_fallback")
 
