@@ -36,7 +36,7 @@ func _setup_lighting_and_sky() -> void:
 		if sky_tex != null:
 			var pano_mat := PanoramaSkyMaterial.new()
 			pano_mat.panorama = sky_tex
-			pano_mat.energy_multiplier = 1.02
+			pano_mat.energy_multiplier = 0.88
 			sky.sky_material = pano_mat
 		else:
 			var sky_mat := ProceduralSkyMaterial.new()
@@ -47,28 +47,29 @@ func _setup_lighting_and_sky() -> void:
 			sky.sky_material = sky_mat
 		env.background_mode = Environment.BG_SKY
 		env.sky = sky
+		env.sky_rotation = Vector3(deg_to_rad(15.0), 0.0, 0.0)
 	else:
 		env.background_mode = Environment.BG_COLOR
 		env.background_color = Color(0.95, 0.91, 0.85)
 
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.98
+	env.tonemap_exposure = 0.88
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 0.65
-	env.ambient_light_color = Color(0.97, 0.92, 0.85)
-	env.ambient_light_energy = 0.64
+	env.ambient_light_sky_contribution = 0.50
+	env.ambient_light_color = Color(0.96, 0.90, 0.82)
+	env.ambient_light_energy = 0.44
 
 	# Warm cream storybook atmospheric depth fog to gently fade distant clutter
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.97, 0.92, 0.85)
-	env.fog_light_energy = 1.0
-	env.fog_density = 0.0042
-	env.fog_sky_affect = 0.16
+	env.fog_light_color = Color(0.95, 0.89, 0.82)
+	env.fog_light_energy = 0.92
+	env.fog_density = 0.0020
+	env.fog_sky_affect = 0.05
 
 	env.glow_enabled = true
-	env.glow_hdr_threshold = 1.35
-	env.glow_intensity = 0.16
-	env.glow_bloom = 0.04
+	env.glow_hdr_threshold = 1.45
+	env.glow_intensity = 0.12
+	env.glow_bloom = 0.03
 
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
@@ -79,7 +80,7 @@ func _setup_lighting_and_sky() -> void:
 	sun.name = "MainSunLight"
 	sun.rotation_degrees = Vector3(-50.0, -26.0, 0.0)
 	sun.light_color = Color(1.0, 0.95, 0.87)
-	sun.light_energy = 0.96
+	sun.light_energy = 0.72
 	sun.shadow_opacity = 0.66
 	sun.directional_shadow_max_distance = 85.0
 	sun.shadow_enabled = not is_headless
@@ -89,7 +90,7 @@ func _setup_lighting_and_sky() -> void:
 	fill.name = "SkyFillLight"
 	fill.rotation_degrees = Vector3(-34.0, 148.0, 0.0)
 	fill.light_color = Color(0.90, 0.93, 1.0)
-	fill.light_energy = 0.34
+	fill.light_energy = 0.22
 	fill.shadow_enabled = false
 	add_child(fill)
 

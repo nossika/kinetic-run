@@ -62,7 +62,7 @@ static func high_friction_physics(friction_val: float = 0.88, bounce_val: float 
 
 static func make_beechwood_material(tint: Color = Color.WHITE) -> StandardMaterial3D:
 	var mat := _new_base_material()
-	var warm_cream_maple := Color(0.97, 0.92, 0.85, 1.0)
+	var warm_cream_maple := Color(0.91, 0.82, 0.70, 1.0)
 	mat.albedo_color = Color(
 		tint.r * warm_cream_maple.r,
 		tint.g * warm_cream_maple.g,
