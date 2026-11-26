@@ -220,32 +220,11 @@ func add_sky_platform(
 	deck.physics_material_override = MaterialLibrary.high_friction_physics(0.80, 0.14)
 	deck.set_meta("is_anchored_fixed", true)
 
-	var col := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	col.shape = shape
-	deck.add_child(col)
-
-	var kick_len := 2.6
-	var kick_pitch_deg := 12.0
-	var kick_rad := deg_to_rad(kick_pitch_deg)
-	var kick_offset := Vector3(
-		0.0,
-		(kick_len * 0.5) * sin(kick_rad),
-		-size.z * 0.5 - (kick_len * 0.5) * cos(kick_rad) + 0.08
-	)
-	if with_end_kick:
-		var kick_col := CollisionShape3D.new()
-		var kick_shape := BoxShape3D.new()
-		kick_shape.size = Vector3(size.x, size.y, kick_len)
-		kick_col.shape = kick_shape
-		kick_col.position = kick_offset
-		kick_col.rotation_degrees = Vector3(kick_pitch_deg, 0.0, 0.0)
-		deck.add_child(kick_col)
-
-	if DisplayServer.get_name() != "headless":
+	var is_headless := DisplayServer.get_name() == "headless"
+	var trim_mat: StandardMaterial3D = null
+	if not is_headless:
 		var deck_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.32, 0.90, 1.0, 0.64))
-		var trim_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.76, 0.98, 1.0, 0.86))
+		trim_mat = MaterialLibrary.make_frosted_acrylic_material(Color(0.76, 0.98, 1.0, 0.86))
 		var strut_mat := MaterialLibrary.make_frosted_acrylic_material(Color(0.98, 0.80, 0.36, 0.52))
 
 		var deck_mesh := MeshInstance3D.new()
@@ -255,36 +234,62 @@ func add_sky_platform(
 		RenderHelper.attach_mesh(deck_mesh, deck_box)
 		deck.add_child(deck_mesh)
 
+		var curb_box := BoxMesh.new()
+		curb_box.size = Vector3(0.09, 0.10, size.z)
+		curb_box.material = trim_mat
+
+		var stay_cyl := CylinderMesh.new()
+		stay_cyl.top_radius = 0.035
+		stay_cyl.bottom_radius = 0.035
+		stay_cyl.height = 1.85
+		stay_cyl.radial_segments = 8
+		stay_cyl.material = strut_mat
+
 		for side_sign in [-1.0, 1.0]:
 			var curb := MeshInstance3D.new()
-			var curb_box := BoxMesh.new()
-			curb_box.size = Vector3(0.09, 0.10, size.z)
-			curb_box.material = trim_mat
 			RenderHelper.attach_mesh(curb, curb_box)
 			curb.position = Vector3(side_sign * (size.x * 0.5 - 0.045), size.y * 0.5 + 0.05, 0.0)
 			deck.add_child(curb)
 
 			# Slender angled side-stay cables (visual only, leaving ground lane 100% clear)
 			var stay := MeshInstance3D.new()
-			var stay_cyl := CylinderMesh.new()
-			stay_cyl.top_radius = 0.035
-			stay_cyl.bottom_radius = 0.035
-			stay_cyl.height = 1.85
-			stay_cyl.radial_segments = 8
-			stay_cyl.material = strut_mat
+			stay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			RenderHelper.attach_mesh(stay, stay_cyl)
 			stay.position = Vector3(side_sign * (size.x * 0.5 + 0.28), -0.78, 0.0)
 			stay.rotation_degrees = Vector3(0.0, 0.0, side_sign * 22.0)
 			deck.add_child(stay)
 
-		if with_end_kick:
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	col.shape = shape
+	deck.add_child(col)
+
+	if with_end_kick:
+		const KICK_LEN: float = 2.6
+		const KICK_PITCH_DEG: float = 12.0
+		var kick_rad := deg_to_rad(KICK_PITCH_DEG)
+		var kick_offset := Vector3(
+			0.0,
+			(KICK_LEN * 0.5) * sin(kick_rad),
+			-size.z * 0.5 - (KICK_LEN * 0.5) * cos(kick_rad) + 0.08
+		)
+		var kick_col := CollisionShape3D.new()
+		var kick_shape := BoxShape3D.new()
+		kick_shape.size = Vector3(size.x, size.y, KICK_LEN)
+		kick_col.shape = kick_shape
+		kick_col.position = kick_offset
+		kick_col.rotation_degrees = Vector3(KICK_PITCH_DEG, 0.0, 0.0)
+		deck.add_child(kick_col)
+
+		if not is_headless:
 			var kick_mesh := MeshInstance3D.new()
 			var kick_box := BoxMesh.new()
-			kick_box.size = Vector3(size.x, size.y, kick_len)
+			kick_box.size = Vector3(size.x, size.y, KICK_LEN)
 			kick_box.material = trim_mat
 			RenderHelper.attach_mesh(kick_mesh, kick_box)
 			kick_mesh.position = kick_offset
-			kick_mesh.rotation_degrees = Vector3(kick_pitch_deg, 0.0, 0.0)
+			kick_mesh.rotation_degrees = Vector3(KICK_PITCH_DEG, 0.0, 0.0)
 			deck.add_child(kick_mesh)
 
 	add_child(deck)

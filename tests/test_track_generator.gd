@@ -316,6 +316,7 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 	var found_brute := false
 	var found_sky_platform := false
 	var found_high_air_entity := false
+	var found_high_air_ring := false
 	var found_ground_wind := false
 	var found_aerial_wind := false
 	var seen_wind_presets: Dictionary = {}
@@ -356,9 +357,21 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 			if ent is SpringPad:
 				found_spring = true
 			elif ent is AerialBonusRing:
+				var abr := ent as AerialBonusRing
 				found_ring = true
 				if sample_ring == null:
-					sample_ring = ent as AerialBonusRing
+					sample_ring = abr
+				if abr.position.y >= 4.4:
+					found_high_air_ring = true
+					assert_false(
+						abr.with_ground_stem,
+						"Upper-air AerialBonusRing (Y >= 4.4m) suppresses floor stem (with_ground_stem == false)"
+					)
+				else:
+					assert_true(
+						abr.with_ground_stem,
+						"Ground/low-arc AerialBonusRing (Y < 4.4m) keeps floor stem (with_ground_stem == true)"
+					)
 			elif ent is AerialBlocker:
 				found_blocker = true
 				assert_true(ent is RigidBody3D, "AerialBlocker is a native RigidBody3D")
@@ -410,6 +423,15 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 					found_ground_wind = true
 				if wz.position.y >= 3.6 or wz.wind_preset == "updraft":
 					found_aerial_wind = true
+				if wz.position.y >= 3.6 and wz.wind_preset != "updraft":
+					for ch in chunks:
+						if wz.position.z <= ch.entry_z and wz.position.z >= ch.exit_z:
+							for ch_child in ch.get_children():
+								assert_false(
+									ch_child is StaticBody3D and ch_child.is_in_group("sky_platform"),
+									"High-air WindZone does not spawn in same chunk as a SkyPlatform"
+								)
+							break
 
 	# Verify +25% widened start platform, finish runway, and goal Area3D covering ground & sky layer
 	var tr_root: Node3D = gen.get_track_root()
@@ -463,6 +485,7 @@ func _test_wave_hills_side_launch_ramp_and_vertical_entities() -> void:
 	assert_true(found_brute, "Generated tracks spawn 20kg ShieldBrute RigidBody3D entities")
 	assert_true(found_sky_platform, "Generated tracks spawn upper-air SkyPlatform StaticBody3Ds (Y >= 4.4m)")
 	assert_true(found_high_air_entity, "Generated tracks spawn high-altitude entities (Y >= 4.5m)")
+	assert_true(found_high_air_ring, "Generated tracks spawn upper-air AerialBonusRings (Y >= 4.4m) without ground stems")
 	assert_true(found_ground_wind, "Generated tracks spawn ground-level WindZones (Y < 3.6m)")
 	assert_true(found_aerial_wind, "Generated tracks spawn aerial or updraft WindZones (Y >= 3.6m or updraft)")
 	assert_true(
@@ -508,7 +531,13 @@ func _capture_track_signature(info: Dictionary) -> Dictionary:
 			extra += "|phase=%0.4f" % (node_ent as AerialBlocker).initial_phase
 		elif node_ent is WindZone:
 			var wz := node_ent as WindZone
-			extra += "|wind=%s:%0.2f" % [wz.wind_preset, wz.wind_force_newtons]
+			extra += "|wind=%s:%0.2f@(%0.2f,%0.2f,%0.2f)" % [
+				wz.wind_preset,
+				wz.wind_force_newtons,
+				wz.zone_size.x,
+				wz.zone_size.y,
+				wz.zone_size.z,
+			]
 		ent_records.append("%s@(%0.3f,%0.3f,%0.3f)rotY=%0.3f[%s]" % [scr_path, p.x, p.y, p.z, rot_y, extra])
 
 	return {

@@ -376,7 +376,10 @@ func _on_target_smashed(_world_pos: Vector3) -> void:
 
 
 func _on_barrel_detonated(origin: Vector3, radius: float, force: float, chain_depth: int) -> void:
-	chase_camera.add_shake(0.38)
+	if player_ball != null and chase_camera != null:
+		var shake_t := clampf(1.0 - player_ball.global_position.distance_to(origin) / 42.0, 0.0, 1.0)
+		if shake_t > 0.0:
+			chase_camera.add_shake(0.38 * shake_t)
 	if player_ball != null and not player_ball.is_respawning:
 		var already_boosted := origin.distance_squared_to(player_ball.last_external_boost_origin) <= 0.0001
 		if already_boosted:

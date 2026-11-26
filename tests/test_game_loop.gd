@@ -156,7 +156,13 @@ func _capture_world_track_state(world: Variant) -> Dictionary:
 			extra += "|phase=%0.4f" % (node_ent as AerialBlocker).initial_phase
 		elif node_ent is WindZone:
 			var wz := node_ent as WindZone
-			extra += "|wind=%s:%0.2f" % [wz.wind_preset, wz.wind_force_newtons]
+			extra += "|wind=%s:%0.2f@(%0.2f,%0.2f,%0.2f)" % [
+				wz.wind_preset,
+				wz.wind_force_newtons,
+				wz.zone_size.x,
+				wz.zone_size.y,
+				wz.zone_size.z,
+			]
 		entity_records.append("%s@(%0.3f,%0.3f,%0.3f)rotY=%0.3f[%s]" % [scr_path, p.x, p.y, p.z, rot_y, extra])
 
 	return {
@@ -206,6 +212,13 @@ func _test_vertical_gravity_zero_roll_and_slope_stability() -> void:
 	for ent in world.track_generator.active_entities:
 		if ent is WindZone and is_instance_valid(ent):
 			active_wind_zones.append(ent as WindZone)
+		elif ent is AerialBonusRing and is_instance_valid(ent):
+			var abr := ent as AerialBonusRing
+			if abr.position.y >= 4.4:
+				assert_false(
+					abr.with_ground_stem,
+					"World upper-air AerialBonusRing (Y >= 4.4m) suppresses floor stem"
+				)
 
 	var tracked_500g: Array[Dictionary] = []
 	var tracked_800g: Array[Dictionary] = []
@@ -535,6 +548,15 @@ func _test_hud_seed_modal_pause_bonus_ring_and_summary_seed_actions() -> void:
 	fast_debris.linear_velocity = Vector3(0.0, 4.0, -15.0)
 	barrel_debris.on_body_contact(fast_debris)
 	assert_gt(world.player_ball.linear_velocity.length(), 20.0, "Debris-triggered barrel blast boosts nearby player_ball")
+
+	# Distant barrel detonation (> 42m away) does not shake ChaseCamera3D
+	world.chase_camera._shake_trauma = 0.0
+	var far_origin: Vector3 = world.player_ball.global_position + Vector3(0.0, 0.0, -100.0)
+	world._on_barrel_detonated(far_origin, 6.5, 25.0, 0)
+	assert_approx(world.chase_camera._shake_trauma, 0.0, 0.0001, "Barrel detonation 100m away (> 42m) adds zero camera shake")
+	var near_origin: Vector3 = world.player_ball.global_position + Vector3(0.0, 0.0, -10.5)
+	world._on_barrel_detonated(near_origin, 6.5, 25.0, 0)
+	assert_gt(world.chase_camera._shake_trauma, 0.25, "Nearby barrel detonation (10.5m) adds distance-attenuated camera shake")
 
 	# 4. RunSummaryPanel same-seed and custom-seed signals
 	world.simulate_race_step(35.0)

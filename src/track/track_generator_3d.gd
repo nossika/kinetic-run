@@ -266,15 +266,22 @@ func _resolve_rigidbody_clearance(desired: Vector3, z_min: float, z_max: float, 
 	var is_high_air := desired.y >= 4.2
 	var min_x := -4.8
 	var max_x := 4.8
+	var eff_z_min := z_min
+	var eff_z_max := z_max
 	var x_offsets: Array[float] = [0.0, -1.2, 1.2, -2.4, 2.4, -3.6, 3.6]
 	var z_offsets: Array[float] = [0.0, -1.95, 1.95, -3.9, 3.9]
 	if is_high_air:
 		min_x = desired.x - 1.1
 		max_x = desired.x + 1.1
+		eff_z_min = maxf(z_min, desired.z - 2.0)
+		eff_z_max = minf(z_max, desired.z + 2.0)
+		if eff_z_min > eff_z_max:
+			eff_z_min = candidate.z
+			eff_z_max = candidate.z
 		x_offsets = [0.0, -0.55, 0.55, -1.05, 1.05]
 		z_offsets = [0.0, -1.5, 1.5, -2.8, 2.8]
 	for dz in z_offsets:
-		var test_z := clampf(candidate.z + dz, z_min, z_max)
+		var test_z := clampf(candidate.z + dz, eff_z_min, eff_z_max)
 		for dx in x_offsets:
 			var test_x := clampf(candidate.x + dx, min_x, max_x)
 			var probe := Vector3(test_x, candidate.y, test_z)
@@ -506,8 +513,15 @@ func _populate_chunk_entities(
 				_spawn_tiered_crate(cx, cz, level, rng, chunk)
 			_spawn_chunk_entity(TrackEntityFactory.create_bouncer_slime(Vector3(0.0, 0.65, z0 - 27.2), 3.75), chunk)
 
-	var has_approach_updraft := _populate_high_air_layer(chunk, level, rng, is_first_chunk)
-	_populate_chunk_wind_zones(chunk, level, rng, is_first_chunk, has_approach_updraft)
+	var high_air_info := _populate_high_air_layer(chunk, level, rng, is_first_chunk)
+	_populate_chunk_wind_zones(
+		chunk,
+		level,
+		rng,
+		is_first_chunk,
+		bool(high_air_info.get("has_approach_updraft", false)),
+		bool(high_air_info.get("has_sky_platform", false))
+	)
 
 
 func _populate_high_air_layer(
@@ -515,13 +529,13 @@ func _populate_high_air_layer(
 	level: int,
 	rng: RandomNumberGenerator,
 	is_first_chunk: bool
-) -> bool:
+) -> Dictionary:
 	if is_first_chunk or chunk.chunk_type == "NarrowBridge":
-		return false
+		return {"has_approach_updraft": false, "has_sky_platform": false}
 
 	var sky_prob := clampf(0.34 + 0.04 * float(level - 1), 0.34, 0.48)
 	if rng.randf() >= sky_prob:
-		return false
+		return {"has_approach_updraft": false, "has_sky_platform": false}
 
 	var z0 := chunk.entry_z
 
@@ -532,7 +546,7 @@ func _populate_high_air_layer(
 			chunk.add_sky_platform(Vector3(sky_x, sky_y, -18.5), Vector3(3.8, 0.34, 10.0), true)
 			var top_y := sky_y + 0.17
 			_spawn_chunk_entity(
-				TrackEntityFactory.create_aerial_bonus_ring(Vector3(sky_x, sky_y + 1.25, z0 - 15.6)),
+				TrackEntityFactory.create_aerial_bonus_ring(Vector3(sky_x, sky_y + 1.25, z0 - 15.6), false),
 				chunk
 			)
 			if rng.randf() < 0.55:
@@ -550,10 +564,11 @@ func _populate_high_air_layer(
 					TrackEntityFactory.create_crate(Vector3(sky_x, top_y + 0.50, z0 - 21.0), "light", sky_yaw),
 					chunk
 				)
+			return {"has_approach_updraft": false, "has_sky_platform": true}
 		else:
 			var blocker_off_x := 1.15 if rng.randf() < 0.5 else -1.15
 			_spawn_chunk_entity(
-				TrackEntityFactory.create_aerial_bonus_ring(Vector3(sky_x, sky_y + 0.4, z0 - 16.5)),
+				TrackEntityFactory.create_aerial_bonus_ring(Vector3(sky_x, sky_y + 0.4, z0 - 16.5), false),
 				chunk
 			)
 			_spawn_chunk_entity(
@@ -564,7 +579,7 @@ func _populate_high_air_layer(
 				),
 				chunk
 			)
-		return false
+			return {"has_approach_updraft": false, "has_sky_platform": false}
 
 	# StraightWide, SplitPath, PinballAlley, FunnelGauntlet
 	var sky_x := 0.0
@@ -578,7 +593,7 @@ func _populate_high_air_layer(
 	chunk.add_sky_platform(Vector3(sky_x, sky_y, -16.2), Vector3(3.8, 0.34, 11.2), rng.randf() < 0.65)
 	var top_y := sky_y + 0.17
 	_spawn_chunk_entity(
-		TrackEntityFactory.create_aerial_bonus_ring(Vector3(sky_x, top_y + 1.20, z0 - 13.0)),
+		TrackEntityFactory.create_aerial_bonus_ring(Vector3(sky_x, top_y + 1.20, z0 - 13.0), false),
 		chunk
 	)
 
@@ -608,9 +623,9 @@ func _populate_high_air_layer(
 			),
 			chunk
 		)
-		return true
+		return {"has_approach_updraft": true, "has_sky_platform": true}
 
-	return false
+	return {"has_approach_updraft": false, "has_sky_platform": true}
 
 
 func _populate_chunk_wind_zones(
@@ -618,7 +633,8 @@ func _populate_chunk_wind_zones(
 	level: int,
 	rng: RandomNumberGenerator,
 	is_first_chunk: bool,
-	has_approach_updraft: bool
+	has_approach_updraft: bool,
+	has_sky_platform: bool = false
 ) -> void:
 	if is_first_chunk or has_approach_updraft:
 		return
@@ -629,7 +645,7 @@ func _populate_chunk_wind_zones(
 
 	var z0 := chunk.entry_z
 
-	if rng.randf() < 0.58:
+	if has_sky_platform or rng.randf() < 0.58:
 		var wz_y := 1.85
 		var wz_z := z0 - chunk.length * rng.randf_range(0.42, 0.68)
 		match chunk.chunk_type:

@@ -7,6 +7,7 @@ const BONUS_SECONDS: float = 0.8
 const RING_BOOST_PER_KG: float = 15.0
 
 var is_collected: bool = false
+var with_ground_stem: bool = true
 var _visual_root: Node3D = null
 
 
@@ -44,19 +45,20 @@ func _ready() -> void:
 		inner_ring.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		_visual_root.add_child(inner_ring)
 
-		var stem_inst := MeshInstance3D.new()
-		var stem_cyl := CylinderMesh.new()
-		stem_cyl.top_radius = 0.055
-		stem_cyl.bottom_radius = 0.075
-		stem_cyl.height = 1.8
-		var brass_mat := StandardMaterial3D.new()
-		brass_mat.albedo_color = Color(0.85, 0.68, 0.28)
-		brass_mat.metallic = 0.78
-		brass_mat.roughness = 0.28
-		stem_cyl.material = brass_mat
-		RenderHelper.attach_mesh(stem_inst, stem_cyl)
-		stem_inst.position = Vector3(0.0, -2.0, 0.0)
-		_visual_root.add_child(stem_inst)
+		if with_ground_stem:
+			var stem_inst := MeshInstance3D.new()
+			var stem_cyl := CylinderMesh.new()
+			stem_cyl.top_radius = 0.055
+			stem_cyl.bottom_radius = 0.075
+			stem_cyl.height = 1.8
+			var brass_mat := StandardMaterial3D.new()
+			brass_mat.albedo_color = Color(0.85, 0.68, 0.28)
+			brass_mat.metallic = 0.78
+			brass_mat.roughness = 0.28
+			stem_cyl.material = brass_mat
+			RenderHelper.attach_mesh(stem_inst, stem_cyl)
+			stem_inst.position = Vector3(0.0, -2.0, 0.0)
+			_visual_root.add_child(stem_inst)
 
 	body_entered.connect(_on_body_entered)
 

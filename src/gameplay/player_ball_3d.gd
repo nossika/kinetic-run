@@ -28,6 +28,7 @@ var _slime_zone_count: int = 0
 var _stuck_timer: float = 0.0
 var _air_time: float = 0.0
 var _surface_support_timer: float = 0.0
+var _elevated_landing_impact: bool = false
 var _peak_downward_speed: float = 0.0
 var _rail_bounce_cooldown: float = 0.0
 var _obstacle_bounce_cooldown: float = 0.0
@@ -52,6 +53,7 @@ var _weight_label_3d: Label3D = null
 
 
 func _ready() -> void:
+	add_to_group("player_ball")
 	continuous_cd = true
 	contact_monitor = true
 	max_contacts_reported = 16
@@ -78,6 +80,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_rail_bounce_cooldown = maxf(0.0, _rail_bounce_cooldown - delta)
 	_obstacle_bounce_cooldown = maxf(0.0, _obstacle_bounce_cooldown - delta)
+	_surface_support_timer = maxf(0.0, _surface_support_timer - delta)
 	_flush_pending_contact_events()
 	if not is_respawning and not _is_paused:
 		_saved_velocity_pre_step = linear_velocity
@@ -424,6 +427,7 @@ func reset_for_track(start_pos: Vector3) -> void:
 	_stuck_timer = 0.0
 	_air_time = 0.0
 	_surface_support_timer = 0.0
+	_elevated_landing_impact = false
 	_peak_downward_speed = 0.0
 	_rail_bounce_cooldown = 0.0
 	_obstacle_bounce_cooldown = 0.0
@@ -527,6 +531,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 			and contact_normal.dot(track_up) >= 0.62
 		):
 			_surface_support_timer = SURFACE_SUPPORT_GRACE
+			var pre_up_vel := v_pre.dot(track_up)
+			if pre_up_vel < -2.2:
+				_elevated_landing_impact = true
+				_peak_downward_speed = maxf(_peak_downward_speed, -pre_up_vel)
 
 		if col_node.is_in_group("pinball_bumper") and col_node.has_method("trigger_bumper_bounce"):
 			_pending_contact_events.append({
@@ -684,6 +692,7 @@ func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> 
 	if local_pos.y < safe_floor_y - FALL_Y_OFFSET:
 		is_respawning = true
 		_surface_support_timer = 0.0
+		_elevated_landing_impact = false
 		respawn_time_left = RESPAWN_DURATION
 		linear_velocity = Vector3.ZERO
 		angular_velocity = Vector3.ZERO
@@ -699,8 +708,10 @@ func step_ball(delta: float, thrust_axis: float, lateral_accel: float = 0.0) -> 
 
 	# Airborne tracking & landing detection in track-local space
 	var currently_supported := has_ground_or_sky_support()
+	var landed_now := currently_supported or _elevated_landing_impact
+	_elevated_landing_impact = false
 	_surface_support_timer = maxf(0.0, _surface_support_timer - delta)
-	if not currently_supported:
+	if not landed_now:
 		_air_time += delta
 		var down_speed := -linear_velocity.dot(track_basis.y)
 		if down_speed > _peak_downward_speed:

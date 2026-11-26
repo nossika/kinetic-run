@@ -9,8 +9,6 @@ var wind_dir_local: Vector3 = Vector3.RIGHT
 var wind_force_newtons: float = 26.0
 var wind_tint: Color = Color(0.36, 0.90, 1.0, 0.58)
 
-var _bodies_in_zone: Array[RigidBody3D] = []
-var _initial_scan_done: bool = false
 var _visual_phase: float = 0.0
 var _flow_root: Node3D = null
 var _ribbon_items: Array[Dictionary] = []
@@ -87,11 +85,6 @@ func _ready() -> void:
 
 	_build_wind_visuals()
 
-	if not body_entered.is_connected(_on_body_entered):
-		body_entered.connect(_on_body_entered)
-	if not body_exited.is_connected(_on_body_exited):
-		body_exited.connect(_on_body_exited)
-
 
 func _build_wind_visuals() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -105,11 +98,12 @@ func _build_wind_visuals() -> void:
 	var rim_mat := MaterialLibrary.make_frosted_acrylic_material(rim_color)
 
 	# Subtle base boundary strips on the bottom face of the wind volume so edges read clearly
+	var edge_box := BoxMesh.new()
+	edge_box.size = Vector3(0.08, 0.05, zone_size.z)
+	edge_box.material = rim_mat
 	for side_x in [-1.0, 1.0]:
 		var edge := MeshInstance3D.new()
-		var edge_box := BoxMesh.new()
-		edge_box.size = Vector3(0.08, 0.05, zone_size.z)
-		edge_box.material = rim_mat
+		edge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		RenderHelper.attach_mesh(edge, edge_box)
 		edge.position = Vector3(side_x * (zone_size.x * 0.5 - 0.04), -zone_size.y * 0.5 + 0.03, 0.0)
 		add_child(edge)
@@ -117,7 +111,7 @@ func _build_wind_visuals() -> void:
 	# Orient _flow_root so its -Z axis points strictly along wind_dir_local
 	_flow_root = Node3D.new()
 	_flow_root.name = "WindFlowRoot"
-	var up_hint := Vector3.UP if absf(wind_dir_local.dot(Vector3.UP)) < 0.92 else Vector3.FORWARD
+	var up_hint := Vector3.UP if absf(wind_dir_local.y) < 0.75 else Vector3.FORWARD
 	_flow_root.basis = Basis.looking_at(wind_dir_local, up_hint)
 	add_child(_flow_root)
 
@@ -125,6 +119,10 @@ func _build_wind_visuals() -> void:
 	var cross_w := maxf(1.4, _compute_flow_span(_flow_root.basis.x) * 0.76)
 	var cross_h := maxf(1.2, _compute_flow_span(_flow_root.basis.y) * 0.68)
 	var ribbon_base_len := clampf(flow_span * 0.26, 1.4, 2.6)
+
+	var rbox := BoxMesh.new()
+	rbox.size = Vector3(0.055, 0.035, ribbon_base_len)
+	rbox.material = ribbon_mat
 
 	_ribbon_items.clear()
 	for i in range(RIBBON_COUNT):
@@ -135,9 +133,7 @@ func _build_wind_visuals() -> void:
 		var stagger := fmod(float(i) * 0.29 + float(row) * 0.17, 1.0)
 
 		var rib := MeshInstance3D.new()
-		var rbox := BoxMesh.new()
-		rbox.size = Vector3(0.055, 0.035, ribbon_base_len)
-		rbox.material = ribbon_mat
+		rib.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		RenderHelper.attach_mesh(rib, rbox)
 		_flow_root.add_child(rib)
 
@@ -151,12 +147,13 @@ func _build_wind_visuals() -> void:
 
 	# Three crisp 3D chevron arrowheads pointing along wind_dir_local (-Z of _flow_root)
 	var chevron_rot := Basis(Vector3.RIGHT, deg_to_rad(-90.0))
+	var prism := PrismMesh.new()
+	prism.size = Vector3(0.68, 0.56, 0.10)
+	prism.material = arrow_mat
 	for idx in range(3):
 		var z_frac := (float(idx) - 1.0) * 0.28 * flow_span
 		var chev := MeshInstance3D.new()
-		var prism := PrismMesh.new()
-		prism.size = Vector3(0.68, 0.56, 0.10)
-		prism.material = arrow_mat
+		chev.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		RenderHelper.attach_mesh(chev, prism)
 		chev.transform = Transform3D(chevron_rot, Vector3(0.0, 0.0, z_frac))
 		_flow_root.add_child(chev)
@@ -182,58 +179,51 @@ func _update_ribbon_transforms() -> void:
 		node.scale = Vector3(maxf(0.15, envelope), maxf(0.15, envelope), maxf(0.20, envelope))
 
 
-func _on_body_entered(body: Node) -> void:
-	if body is RigidBody3D:
-		var rb := body as RigidBody3D
-		if not _bodies_in_zone.has(rb):
-			_bodies_in_zone.append(rb)
-
-
-func _on_body_exited(body: Node) -> void:
-	if body is RigidBody3D:
-		_bodies_in_zone.erase(body as RigidBody3D)
-
-
-func _sync_overlapping_rigidbodies() -> void:
-	for b in get_overlapping_bodies():
-		if b is RigidBody3D:
-			var rb := b as RigidBody3D
-			if not _bodies_in_zone.has(rb):
-				_bodies_in_zone.append(rb)
+func _is_obstacle_wind_active() -> bool:
+	if not is_inside_tree() or get_tree() == null:
+		return true
+	var balls := get_tree().get_nodes_in_group("player_ball")
+	if balls.is_empty():
+		return true
+	var max_dist := 60.0 + zone_size.length() * 0.5
+	var zone_pos := global_position
+	var any_valid_ball := false
+	for b in balls:
+		if b is PlayerBall3D and is_instance_valid(b) and not b.is_queued_for_deletion():
+			var ball_node := b as PlayerBall3D
+			if not ball_node.is_inside_tree():
+				continue
+			any_valid_ball = true
+			if ball_node.global_position.distance_to(zone_pos) <= max_dist:
+				return true
+	return not any_valid_ball
 
 
 func _physics_process(delta: float) -> void:
-	if not _initial_scan_done:
-		_initial_scan_done = true
-		_sync_overlapping_rigidbodies()
-	elif monitoring:
-		_sync_overlapping_rigidbodies()
-
 	var span := maxf(2.0, _compute_flow_span(wind_dir_local))
 	var scroll_speed := clampf(wind_force_newtons * 0.42, 7.0, 19.0)
 	_visual_phase = fposmod(_visual_phase + (scroll_speed * delta) / span, 1.0)
 	if not _ribbon_items.is_empty():
 		_update_ribbon_transforms()
 
-	var basis_world := (
-		global_transform.basis.orthonormalized()
-		if is_inside_tree()
-		else transform.basis.orthonormalized()
-	)
+	if not monitoring or not is_inside_tree():
+		return
+
+	var basis_world := global_transform.basis.orthonormalized()
 	var w_world := (basis_world * wind_dir_local).normalized()
 	var max_wind_speed := clampf(wind_force_newtons * 0.78, 16.0, 34.0)
+	var blow_obstacles := _is_obstacle_wind_active()
 
-	for i in range(_bodies_in_zone.size() - 1, -1, -1):
-		var rb := _bodies_in_zone[i]
-		if rb == null or not is_instance_valid(rb) or rb.is_queued_for_deletion():
-			_bodies_in_zone.remove_at(i)
+	for b in get_overlapping_bodies():
+		if not (b is RigidBody3D):
 			continue
-		if rb.freeze:
+		var rb := b as RigidBody3D
+		if not is_instance_valid(rb) or rb.is_queued_for_deletion() or rb.freeze:
 			continue
 
 		if rb is PlayerBall3D:
 			_apply_wind_to_ball(rb as PlayerBall3D, w_world)
-		else:
+		elif blow_obstacles:
 			_apply_wind_to_obstacle(rb, w_world, max_wind_speed)
 
 

@@ -579,5 +579,42 @@ func _test_sky_platform_landing_and_elevated_control() -> void:
 	ball.step_ball(1.0 / 60.0, 0.0, 0.0)
 	assert_approx(ball.last_safe_pos.z, -22.0, 0.05, "Position outside safe respawn X window (|x| = 3.2 > 3.0) does not overwrite last_safe_pos")
 
+	# High-bounce (vulcan_rubber, bounce = 0.80) drop onto SkyPlatform still fires on_land shockwave & stack
+	var bouncy_bus = bus_script.new()
+	bouncy_bus.apply_upgrade(catalog.get_upgrade("vulcan_rubber"))
+	bouncy_bus.apply_upgrade(catalog.get_upgrade("quake_refractor"))
+	bouncy_bus.apply_upgrade(catalog.get_upgrade("momentum_overload"))
+	var bouncy_ball = ball_script.new()
+	root.add_child(bouncy_ball)
+	bouncy_ball.setup(bouncy_bus)
+	bouncy_ball.track_reference = sloped_track
+	bouncy_ball.reset_for_track(sloped_track.to_global(Vector3(0.0, bouncy_ball.current_radius + 0.1, -2.0)))
+	await scene_tree.physics_frame
+
+	var bouncy_land_waves := {"count": 0}
+	bouncy_ball.synergy_actions_requested.connect(
+		func(actions: Dictionary) -> void:
+			var ws: Array = actions.get("shockwaves", [])
+			bouncy_land_waves["count"] = int(bouncy_land_waves["count"]) + ws.size()
+	)
+
+	bouncy_ball.global_position = sloped_track.to_global(Vector3(0.0, 9.2, -9.5))
+	bouncy_ball.linear_velocity = (-sloped_track.global_transform.basis.z.normalized()) * 5.0
+	bouncy_ball.angular_velocity = Vector3.ZERO
+	bouncy_ball._saved_velocity_pre_step = bouncy_ball.linear_velocity
+
+	var peak_rebound_up := 0.0
+	for _f in range(42):
+		bouncy_ball.step_ball(1.0 / 60.0, 0.0, 0.0)
+		await scene_tree.physics_frame
+		peak_rebound_up = maxf(
+			peak_rebound_up,
+			bouncy_ball.linear_velocity.dot(sloped_track.global_transform.basis.y.normalized())
+		)
+
+	assert_gt(peak_rebound_up, 3.5, "Vulcan Rubber (bounce=0.80) drop onto SkyPlatform rebounds upward at > 3.5 m/s")
+	assert_gt(float(bouncy_land_waves["count"]), 0.0, "High-bounce Vulcan Rubber drop onto SkyPlatform still triggers on_land shockwave")
+	assert_gt(float(bouncy_bus.combo_stacks), 0.0, "High-bounce Vulcan Rubber drop onto SkyPlatform grants Momentum Overload stack")
+
 	root.queue_free()
 	await scene_tree.process_frame

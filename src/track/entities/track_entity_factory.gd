@@ -64,8 +64,9 @@ static func create_spring_pad(pos: Vector3) -> SpringPad:
 	return n
 
 
-static func create_aerial_bonus_ring(pos: Vector3) -> AerialBonusRing:
+static func create_aerial_bonus_ring(pos: Vector3, with_ground_stem: bool = true) -> AerialBonusRing:
 	var n := AerialBonusRing.new()
+	n.with_ground_stem = with_ground_stem
 	n.position = pos
 	return n
 

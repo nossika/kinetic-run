@@ -537,6 +537,10 @@ func _test_spring_pad_bonus_ring_and_aerial_blockers() -> void:
 	if has_ring:
 		var ring = factory_script.create_aerial_bonus_ring(Vector3(0.0, 4.5, -18.0))
 		root.add_child(ring)
+		assert_true(ring.with_ground_stem, "create_aerial_bonus_ring(pos) defaults with_ground_stem to true")
+		var stemless_ring = factory_script.create_aerial_bonus_ring(Vector3(0.0, 6.0, -18.0), false)
+		root.add_child(stemless_ring)
+		assert_false(stemless_ring.with_ground_stem, "create_aerial_bonus_ring(pos, false) sets with_ground_stem == false")
 		var collected_state := {"count": 0, "seconds": 0.0}
 		ring.ring_collected.connect(
 			func(sec: float) -> void:
@@ -963,6 +967,42 @@ func _test_wind_zone_3d_vectors_synergy_and_indiscriminate_rigidbodies() -> void
 	assert_gt(wind_husk.position.x - (-3.0), 0.8, "WindZone blows/rolls 0.45kg EMPTY barrel husk along +X")
 	assert_true(bool(wind_iron.get("is_tethered")), "12kg mag_iron magnetic lock resists wind untethering")
 	assert_lt(absf(wind_brute.position.x - 2.0), 0.08, "20kg ShieldBrute stands rock-solid in WindZone via pure Newtonian static friction")
+
+	gale_zone.queue_free()
+	wind_crate.queue_free()
+	wind_pin.queue_free()
+	wind_balloon.queue_free()
+	wind_iron.queue_free()
+	wind_brute.queue_free()
+	wind_husk.queue_free()
+	await scene_tree.physics_frame
+
+	# 4. 60m player-proximity obstacle wind activation: holds obstacle wind at 100m (> 60m), activates within 60m
+	var prox_zone = factory_script.create_wind_zone(Vector3(0.0, 2.0, -45.0), Vector3(10.0, 4.0, 10.0), "cross_right", 28.0)
+	var prox_crate = factory_script.create_crate(Vector3(0.0, 0.48, -45.0), "light")
+	var prox_ball = _create_ball_in(root)
+	prox_ball.freeze = true
+	prox_ball.global_position = Vector3(0.0, 1.0, 55.0) # 100m away from prox_zone at z = -45.0
+	root.add_child(prox_zone)
+	root.add_child(prox_crate)
+	assert_true(prox_ball.is_in_group("player_ball"), "PlayerBall3D joins group 'player_ball' in _ready()")
+
+	for _f in range(20):
+		await scene_tree.physics_frame
+	assert_lt(
+		absf(prox_crate.position.x),
+		0.05,
+		"WindZone holds obstacle wind when PlayerBall3D is 100m away (> 60m)"
+	)
+
+	prox_ball.global_position = Vector3(0.0, 1.0, -10.0) # 35m away (<= 60m)
+	for _f in range(24):
+		await scene_tree.physics_frame
+	assert_gt(
+		prox_crate.position.x,
+		0.6,
+		"WindZone activates obstacle wind once PlayerBall3D moves within 60m"
+	)
 
 	root.queue_free()
 	await scene_tree.process_frame
